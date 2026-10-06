@@ -14,7 +14,7 @@ import { StyleScene } from '../scenes/styleScene';
 import { Battle } from '../modes/battle';
 import { buildTraining } from '../world/maps/training';
 import { RangeMode } from '../modes/range';
-import { FreeplayMode } from '../modes/freeplay';
+import { SectorMode } from '../modes/sector/sectorMode';
 import { buildBreakwater } from '../world/maps/breakwater';
 import { WEAPON_BY_ID } from '../config/content';
 
@@ -80,7 +80,7 @@ export class App {
       const t0 = performance.now();
       const map = buildBreakwater((f, l) => splash.progress(0.2 + f * 0.6, l));
       this.battle = await Battle.create(this.renderer, map, this.ui, (f, l) => splash.progress(f, l));
-      this.battle.setMode(new FreeplayMode());
+      this.battle.setMode(new SectorMode());
       this.battle.debug.load = `load ${((performance.now() - t0) / 1000).toFixed(1)} s`;
       this.scene = this.battle;
     }
@@ -94,11 +94,11 @@ export class App {
   }
 
   private updateOverlay(): void {
-    const show = this.state === 'playing' && !flags.autoplay && !flags.cam && !input.locked && !!this.battle;
+    const show = this.state === 'playing' && !flags.autoplay && !flags.cam && !flags.spectate && !input.locked && !!this.battle;
     this.overlay.classList.toggle('hidden', !show);
   }
 
-  /** Scripted pilot for automated runs until bot AI drives the player (M5): walks to the firing line and shoots targets. */
+  /** Scripted pilot for automated runs of the firing range (bots drive the player on the battlefield). */
   private autopilot(dt: number): void {
     const b = this.battle;
     if (!b) return;
@@ -154,7 +154,7 @@ export class App {
     this.last = now;
     this.frames++;
     if (this.scene?.frame) this.scene.frame(dt);
-    if (flags.autoplay) this.autopilot(dt);
+    if (flags.autoplay && flags.scene === 'range') this.autopilot(dt);
     const step = 1 / TUNING.loop.hz;
     this.acc += dt;
     let steps = 0;
@@ -184,12 +184,12 @@ export class App {
       drawCalls: this.renderer.drawCalls,
       soldiers: this.battle?.soldiers.length ?? 0,
       aliveSoldiers: this.battle?.soldiers.filter((s) => s.alive).length ?? 0,
-      kills: 0,
-      tickets: [0, 0],
+      kills: this.battle ? this.battle.soldiers.reduce((n, s) => n + s.stats.kills, 0) : 0,
+      tickets: this.battle?.mode instanceof SectorMode ? [Math.round(this.battle.mode.tickets.tickets[0]), Math.round(this.battle.mode.tickets.tickets[1])] : [0, 0],
       vehiclesUsed: 0,
       gadgetsUsed: 0,
       stormEvents: 0,
-      notes: this.battle ? [JSON.stringify(this.battle.debug)] : [],
+      notes: this.battle ? [JSON.stringify(this.battle.debug), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : ''] : [],
     };
   }
 

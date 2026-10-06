@@ -265,6 +265,256 @@ export const TUNING = {
   },
 
   // ---------------------------------------------------------------------------------------------
+  // Sector Control (capture, tickets, squads, spawning, round flow)
+  sector: {
+    tickets: 600,
+    ticketsPerDeath: 1,
+    /** Tickets per second the minority team loses, indexed by the zone-count lead (0..5). */
+    bleed: [0, 0.22, 0.45, 0.75, 1.05, 1.5],
+    /** Seconds for one attacker to take a zone from neutral to owned. */
+    captureSeconds: 24,
+    /** Each extra attacker adds this fraction of the base rate, up to maxCaptureMul. */
+    capturePerExtra: 0.35,
+    maxCaptureMul: 2.6,
+    /** Owned zones with nobody inside drift back to full control at this fraction of the base rate. */
+    regainMul: 0.5,
+    teamSizeMin: 8,
+    teamSizeMax: 32,
+    squadSize: 4,
+    respawnDelay: 8,
+    deployCountdown: 3,
+    hqSpawnRadius: 22,
+    zoneSpawnMinRadius: 14,
+    zoneSpawnMaxRadius: 30,
+    /** A squadmate is a valid spawn when out of combat this long and no enemy is this close. */
+    squadSpawnCombatSeconds: 6,
+    squadSpawnEnemyRadius: 30,
+    /** Spawning on a zone needs it owned and not contested. */
+    spawnProtect: 1.5,
+    endScreenSeconds: 12,
+    killcamSeconds: 3.2,
+    score: { kill: 100, headshotBonus: 25, assist: 50, revive: 80, capture: 200, neutralize: 150, captureAssist: 100, defend: 60, spot: 10, squadSpawnUse: 10, vehicleKill: 250, destroyProp: 5 },
+  },
+
+  // ---------------------------------------------------------------------------------------------
+  // Skirmish (team deathmatch on the fenced Core Plaza)
+  skirmish: {
+    teamSize: 8,
+    killTarget: 75,
+    respawnDelay: 4,
+    timeLimit: 900,
+  },
+
+  // ---------------------------------------------------------------------------------------------
+  // Bots
+  ai: {
+    /**
+     * Per-difficulty aim and decision quality. Aim errors are meters at the target (so they read
+     * the same at any range): trackingFloor is the steady wander, rangeError adds per 100 m,
+     * moveError adds per 5 m/s of target speed, initialError is the miss on first sight.
+     * Times in seconds, turn speed in degrees per second, fov in degrees.
+     */
+    difficulty: {
+      recruit: { reaction: 0.62, reactionJitter: 0.3, initialError: 3.6, trackingFloor: 0.55, errorDecay: 1.6, turnSpeed: 210, rangeError: 0.75, moveError: 0.5, headBias: 0.04, fov: 100, viewDistance: 190, burstMul: 0.75, pauseMul: 1.4, grenadeChance: 0.25, flankChance: 0.2, coverChance: 0.45, strafe: 0.6 },
+      veteran: { reaction: 0.4, reactionJitter: 0.22, initialError: 2.6, trackingFloor: 0.34, errorDecay: 2.4, turnSpeed: 320, rangeError: 0.5, moveError: 0.34, headBias: 0.1, fov: 115, viewDistance: 240, burstMul: 1, pauseMul: 1, grenadeChance: 0.45, flankChance: 0.35, coverChance: 0.65, strafe: 0.85 },
+      elite: { reaction: 0.26, reactionJitter: 0.14, initialError: 1.9, trackingFloor: 0.22, errorDecay: 3.3, turnSpeed: 460, rangeError: 0.32, moveError: 0.22, headBias: 0.2, fov: 125, viewDistance: 290, burstMul: 1.2, pauseMul: 0.75, grenadeChance: 0.6, flankChance: 0.5, coverChance: 0.8, strafe: 1 },
+    },
+    /** Level of detail by distance to the camera: think and perception intervals per bucket. */
+    lod: {
+      nearRange: 90,
+      midRange: 230,
+      think: [0.1, 0.22, 0.5] as [number, number, number],
+      perceive: [0.15, 0.32, 0.7] as [number, number, number],
+      /** Path requests the director serves per sim tick. */
+      pathBudget: 6,
+      /** Seconds between level-of-detail reassignments. */
+      refresh: 0.25,
+    },
+    perception: {
+      /** Enemies this close are noticed in any direction. */
+      closeAwareness: 14,
+      hearShots: 80,
+      hearSuppressed: 18,
+      /** Spotted enemies are seen this much further. */
+      spottedRangeMul: 1.5,
+      forgetAfter: 7,
+      /** Line-of-sight checks per perception tick. */
+      losChecks: 4,
+      /** Stickiness: the current target's score is multiplied by this. */
+      targetKeep: 1.35,
+    },
+    combat: {
+      /** Effective engagement range by weapon category (bots prefer to close beyond it). */
+      engageRange: { ar: 110, smg: 45, lmg: 120, dmr: 170, sniper: 260, shotgun: 18, sidearm: 30, launcher: 90 } as Record<string, number>,
+      /** Burst length (shots) by category for automatic fire. */
+      burst: { ar: [3, 7], smg: [4, 10], lmg: [6, 14], dmr: [1, 2], sniper: [1, 1], shotgun: [1, 1], sidearm: [1, 3], launcher: [1, 1] } as Record<string, [number, number]>,
+      /** Pause between bursts (seconds), stretched with range. */
+      pause: [0.16, 0.45] as [number, number],
+      pausePer100m: 0.35,
+      /** Semi-automatic cadence (seconds between trigger pulls). */
+      semiInterval: [0.22, 0.42] as [number, number],
+      /** Fire only when the aim is within this many target radii of the target. */
+      fireTolerance: 2.2,
+      adsBeyond: 16,
+      crouchBeyond: 45,
+      strafeInterval: [0.5, 1.4] as [number, number],
+      reloadBelow: 0.4,
+      /** Seconds to keep firing at the last known position after losing sight. */
+      suppressFor: 1.6,
+      finishDownedChance: 0.5,
+      /** Largest first-sight miss (degrees). */
+      maxInitialError: 12,
+    },
+    cover: {
+      searchRadius: 20,
+      peek: [0.9, 2.0] as [number, number],
+      hide: [0.6, 1.5] as [number, number],
+      /** Suppression or missing health above this sends the bot to cover. */
+      seekSuppression: 0.45,
+      seekHealth: 55,
+      tallSideStep: 1.1,
+      holdSeconds: [6, 12] as [number, number],
+    },
+    suppression: {
+      perNearMiss: 0.16,
+      perHit: 0.3,
+      nearMissRadius: 3.5,
+      /** Shots farther than this along the line no longer suppress. */
+      maxShotRange: 300,
+      decay: 0.4,
+      /** Aim error multiplier at full suppression. */
+      maxErrorMul: 2.4,
+    },
+    grenades: {
+      minRange: 10,
+      maxRange: 30,
+      cooldown: 14,
+      /** Evade live frags within this radius. */
+      evadeRadius: 8,
+    },
+    revive: {
+      searchRange: 30,
+      medicSearchRange: 55,
+      /** Skip the revive when an enemy is visible closer than this. */
+      threatRange: 25,
+    },
+    movement: {
+      waypointRadius: 1.1,
+      arriveRadius: 2.2,
+      repathEvery: 6,
+      stuckSeconds: 1.1,
+      stuckMinMove: 0.35,
+      sprintBeyond: 14,
+      tacSprintChance: 0.25,
+      jumpGapChance: 0.0,
+      /** Seconds between idle look-around turns. */
+      lookAround: [1.5, 3.5] as [number, number],
+    },
+    squad: {
+      evalEvery: 6,
+      /** A new objective must beat the current one by this much. */
+      hysteresis: 0.25,
+      distanceWeight: 0.55,
+      /** Value by ownership state. */
+      neutral: 1.1,
+      enemyOwned: 1.0,
+      ownContested: 1.5,
+      ownThreatened: 1.2,
+      ownSafe: 0.25,
+      /** Losing on tickets raises the value of zones that flip the bleed. */
+      ticketPressure: 0.6,
+      /** Known enemies near a zone: value drop per enemy beyond the squad's strength. */
+      threatPerEnemy: 0.08,
+      /** Value drop per other friendly squad already assigned. */
+      crowding: 0.35,
+      spreadRadius: 9,
+      flankOffset: 50,
+      regroupDistance: 90,
+      regroupChance: 0.15,
+      /** Squad evaluations per sim tick (staggered). */
+      evalsPerTick: 2,
+      /** Chance a respawning bot picks a squadmate over the best zone. */
+      squadSpawnChance: 0.45,
+      defendRadius: 0.8,
+    },
+    spotting: {
+      cooldown: 6,
+      duration: 6,
+      pingChance: 0.25,
+    },
+    /** Soldier-brain heuristics. */
+    brain: {
+      /** Random stretch of think and perception intervals (fraction). */
+      intervalJitter: 0.3,
+      targetDownedMul: 0.25,
+      targetAttackerMul: 2,
+      targetPlayerMul: 1.05,
+      /** Seconds out of sight before a re-sighting counts as a new engagement. */
+      reacquireAfter: 1.5,
+      evadeSeconds: 1.6,
+      crouchChance: 0.5,
+      /** Approach when farther than this fraction of the weapon's engage range; back off (marksmen) inside backOffWithin. */
+      approachBeyond: 0.9,
+      backOffWithin: 0.25,
+      strafeWeight: 0.8,
+      /** Fraction of the target's velocity times flight time added as lead. */
+      leadFactor: 0.85,
+      /** Fire once the aim is within the tracking floor times this. */
+      settleMul: 1.8,
+      throwRelease: 0.25,
+      throwHold: 1.1,
+      throwTurnMul: 1.5,
+      /** Chance to throw at a fully exposed target (hidden targets always qualify). */
+      grenadeExposedChance: 0.3,
+      /** Cooldown fraction after deciding not to throw. */
+      grenadeRetryMul: 0.3,
+      coverFacingMin: 0.55,
+      coverFacingWeight: 6,
+      coverInvalidFacing: 0.25,
+      coverMinThreatDist: 8,
+      coverDistanceWeight: 0.4,
+      coverTallBonus: 0.5,
+      defendCoverMin: 0.3,
+      /** Squadmates count as this fraction of their distance when picking whom to revive. */
+      squadReviveBias: 0.6,
+      idlePitch: -0.03,
+      lookTurnMul: 0.6,
+      lookSpread: 1.2,
+      stanceInterval: 0.4,
+      /** Bursts shorten with range (meters for the full reduction, max reduction). */
+      burstRangeShrink: 300,
+      burstMaxShrink: 0.6,
+      /** Semi-auto cadence stretches by 1 + dist / this. */
+      semiRangeStretch: 220,
+      burstModeMul: 1.6,
+      flankArrive: 15,
+    },
+    /** Bot roster: class mix and per-class weapon and throwable pools. */
+    loadout: {
+      classWeights: { assault: 0.34, engineer: 0.22, support: 0.24, recon: 0.2 },
+      weapons: {
+        assault: ['tern', 'lumen', 'wasp', 'flicker', 'maul'],
+        engineer: ['wasp', 'flicker', 'tern', 'anvil'],
+        support: ['anvil', 'torrent', 'lumen', 'tern'],
+        recon: ['sable', 'prism', 'longbow', 'lumen'],
+      },
+      throwables: { assault: ['frag', 'frag', 'smoke'], engineer: ['frag', 'emp'], support: ['frag', 'smoke'], recon: ['frag', 'emp', 'smoke'] },
+      /** Chance each attachment slot rolls a random option instead of the default. */
+      attachmentRandom: 0.5,
+    },
+    /** A downed bot with no teammate within helpRange gives up after this many seconds. */
+    downedGiveUp: 8,
+    downedHelpRange: 45,
+    /** Simplified resolution for far bots shooting far targets (no projectile simulation). */
+    farCombat: {
+      /** Probability scale for a hit roll (multiplied by angular target size vs. aim error). */
+      hitScale: 0.85,
+      headChance: 0.08,
+      tracerEvery: 3,
+    },
+  },
+
+  // ---------------------------------------------------------------------------------------------
   // Rendering budgets that behave like gameplay timings
   render: {
     dynamicResolution: {

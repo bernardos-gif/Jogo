@@ -26,6 +26,8 @@ export interface WeaponContext extends CombatContext {
   lockCandidate(s: Soldier): { id: unknown; pos(): THREE.Vector3 | null } | null;
   throwGrenade(s: Soldier, kind: ThrowableId, origin: THREE.Vector3, dir: THREE.Vector3): void;
   horizontalSpeed(s: Soldier): number;
+  /** Optional simplified resolution (far AI level of detail). Returns true when it handled the shot. */
+  resolveShot?(s: Soldier, st: WeaponState['stats'], origin: THREE.Vector3, dir: THREE.Vector3): boolean;
 }
 
 const _dir = new THREE.Vector3();
@@ -204,7 +206,7 @@ export class WeaponSystem {
       const cone = pellets > 1 ? Math.max(spread, st.pelletSpread) : spread;
       coneDir(_aim, cone, this.rng.next(), this.rng.next(), _dir);
       if (st.category === 'launcher') this.fireRocket(s, w, origin, _dir, visOffset, ctx);
-      else ctx.projectiles.spawn('bullet', origin, _dir, st.velocity, s, st, { visOffset, tracer: pellets > 1 ? i < 3 : (w.shot % W.tracerEvery === 0 || s.isPlayer) });
+      else if (!ctx.resolveShot?.(s, st, origin, _dir)) ctx.projectiles.spawn('bullet', origin, _dir, st.velocity, s, st, { visOffset, tracer: pellets > 1 ? i < 3 : (w.shot % W.tracerEvery === 0 || s.isPlayer) });
     }
     // Recoil (deterministic per string) and bloom.
     const rng = new Rng(recoilSeed(st.id, w.stringIndex) + w.shot * 7919);

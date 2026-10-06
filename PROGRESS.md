@@ -11,15 +11,18 @@
 
 - M4: Breakwater Launch Port. 1.2 km FBM terrain with a ridge under E, edge mountains, beach and shallow animated sea, flattened district and HQ pads, smoothed road beds; five districts (A Gantry: launch pad with ramps, lattice gantry tower with an elevator, rocket with colliders, fuel farm tagged for the launch event, launch control building; B Moorings: container stacks, two gantry cranes with a zipline to the deck, a cargo ship boarded by a gangway, warehouses; C Core Plaza: three office towers with stairwells, an external elevator, a zipline triangle between the roofs, a covered arcade, holo plinths and planters; D Sunfield: ten rows of destructible solar panels, inverter huts, a fenced substation; E Ridgeline: relay antennas on the hilltop, three bunkers, a sandbag trench ring, a relay building); two HQs with vehicle pads; road ribbons with kerbs, dashes and lamps; 400 scattered rocks, crates and barriers; destructible crates, walls, panels and chain-reacting fuel tanks (instanced, with debris, colliders and explosions); recast tiled navmesh with ladder / zipline / elevator links and a grid A* fallback; out-of-bounds kills and wading slow-down; free-play spawn mode; GridNav unit tests.
 
+- M5: bots. AI director with level of detail by camera distance (think and perception every 0.1 / 0.22 / 0.5 s and 0.15 / 0.32 / 0.7 s; far bots shooting far bots resolve hits analytically against hitboxes without projectiles), a per-tick path budget over the recast navmesh, a cover-point grid with claims, spotting and pings, and near-miss suppression routing; squads of four that pick objectives by utility (ownership, contest state, distance, known threat, ticket pressure, crowding, hysteresis), with flank routes and regrouping; soldier brains with perception (field of view, hearing, close awareness, spotted targets, line of sight through smoke), human-like aim (reaction time, meters-at-target error that decays to a tracking floor growing with range, target speed and suppression, capped turn speed, lead and drop compensation, head bias), burst discipline and semi-auto cadence, ADS and stance by range, strafing, cover with hide and peek (over low cover, around tall cover), grenade arcs solved for range, grenade evasion, revives (medics search wider), search and suppressive fire on last known positions, ladder / zipline / elevator traversal from navmesh links, and stuck recovery; three difficulties; bot rosters with class mix, specialist, weapon, throwable and random attachments; Sector Control core (zones, capture, tickets, bleed, spawns on HQ / zones / squadmates) so 24v24 fights over objectives; `--autoplay` drives the player with a brain; `--spectate` debug camera; unit tests for capture, contest freeze, neutralize-then-capture, tickets, spawn rules, objective utility, aim determinism and convergence, turn rate and grenade arcs. 48 soldiers run at about 3 ms per sim tick.
+
 ## In progress
 
-- M5: bots.
+- M6: Sector Control (deploy screen, round flow, end of round, scoring).
 
 ## Next
 
-- M6: Sector Control.
+- M7: HUD and menus.
 
 ## Known gaps
 
+- Match pace: with 24v24 bots the losing team currently drains about 20 tickets a minute, so a match would run past 20 minutes; the M12 balance pass tunes bleed and tickets in `tuning.ts` against soak runs.
 - The developer readout (load time, nav kind, movement state) shows under the crosshair until the HUD pass in M7 moves it behind a setting.
 - Settings for FOV and sensitivity are live in the save model and used by the camera and controller; their on-screen sliders arrive with the Settings screen (M7).

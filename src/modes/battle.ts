@@ -36,6 +36,10 @@ import { Destructibles, type Destructible } from '../world/destruction';
 import { Water } from '../world/water';
 import { Rocket } from '../world/rocket';
 import { flags } from '../core/flags';
+import { AIDirector, type AIHost } from '../ai/director';
+import { raySoldier } from '../weapons/hitboxes';
+import { damageAt } from '../weapons/ballistics';
+import { damageSoldier } from '../weapons/damage';
 import { buildNavMesh, GridNav, type PathFinder } from '../world/nav';
 import { explode, killSoldier } from '../weapons/damage';
 import type { Renderer } from '../render/renderer';
@@ -49,7 +53,7 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _right = new THREE.Vector3();
 
-export class Battle implements GameScene, WeaponContext {
+export class Battle implements GameScene, WeaponContext, AIHost {
   readonly scene = new THREE.Scene();
   readonly physics: Physics;
   readonly collision = new CollisionWorld();
@@ -95,6 +99,7 @@ export class Battle implements GameScene, WeaponContext {
   readonly water: Water | null = null;
   readonly rocket: Rocket | null = null;
   nav: PathFinder | null = null;
+  readonly ai: AIDirector;
   private navGeometry: THREE.BufferGeometry;
   /** Fixed debug camera from ?cam=x,y,z,tx,ty,tz (screenshots). */
   private debugCam: number[] | null = null;
@@ -170,6 +175,7 @@ export class Battle implements GameScene, WeaponContext {
     this.vfx.camera = this.fp.camera;
     this.viewmodel = new Viewmodel(renderer.aspect);
     this.collision.targets.push(new SoldierTargets(() => this.soldiers, (s) => !s.inVehicle));
+    this.ai = new AIDirector(this, map.builder.covers, save.settings.difficulty);
 
     this.moveCtx = {
       physics: this.physics,
@@ -288,6 +294,39 @@ export class Battle implements GameScene, WeaponContext {
     const F = TUNING.destruction.fuelTank;
     explode(this, d.center, { radius: F.radius, damage: F.damage, inner: F.inner, attacker: null, weapon: 'Fuel tank', kind: 'fuel', vehicleDamage: F.vehicleDamage });
   }
+  // ---- AIHost ----------------------------------------------------------------------------------
+  fragsNear(p: THREE.Vector3, r: number): readonly { pos: THREE.Vector3 }[] {
+    return this.throwables.near(p, r);
+  }
+  cameraPos(): THREE.Vector3 {
+    return this.fp.camera.position;
+  }
+  hqCenter(team: TeamId): THREE.Vector3 {
+    return this.map.hqs?.find((h) => h.team === team)?.center ?? this.map.spawn;
+  }
+
+  /** Far bots shooting far bots: analytic hit test against the target's hitboxes, no projectile. */
+  resolveShot(s: Soldier, st: Arsenal['current']['stats'], origin: THREE.Vector3, dir: THREE.Vector3): boolean {
+    if (s.isPlayer || s.lod < 2 || st.category === 'launcher') return false;
+    const b = this.ai.brain(s);
+    const t = b?.target;
+    if (!t || t.isPlayer || t.lod < 2 || !t.alive || !b.targetVisible) return false;
+    const range = origin.distanceTo(t.pos) + 3;
+    const hit = raySoldier(t, origin, dir, range);
+    if (!hit) return true;
+    const r = damageSoldier(this, t, damageAt(st, hit.dist, hit.part), { attacker: s, weapon: st.id, part: hit.part, explosive: false, from: origin.clone(), armorMul: st.armorMul });
+    if (r.dealt > 0) this.events.emit('hit', { attacker: s, victim: t, kind: 'soldier', part: hit.part, damage: r.dealt, armorBreak: r.armorBreak, kill: r.killed, downed: r.downed, pos: _v.copy(origin).addScaledVector(dir, hit.dist).clone() });
+    return true;
+  }
+
+  /** Clears transient combat state and rebuilds destructibles (round restart). */
+  resetWorld(): void {
+    this.projectiles.clear();
+    this.throwables.clear();
+    this.destructibles.reset();
+    this.vfx.clear();
+  }
+
   smokeBlocks(a: THREE.Vector3, b: THREE.Vector3): boolean {
     return this.throwables.blocks(a, b);
   }
@@ -347,7 +386,11 @@ export class Battle implements GameScene, WeaponContext {
       }
     }
     const zoom = 1 + (a.current.stats.zoom - 1) * a.adsK;
-    this.controller.frame(p, a.adsK, zoom);
+    if (this.ai.brain(p)) {
+      // Autoplay: the player's brain writes the command; the camera follows its aim.
+      input.takeMouse();
+      this.controller.setAim(p.yaw, p.pitch);
+    } else this.controller.frame(p, a.adsK, zoom);
     if (menu?.open) {
       p.input.fire = false;
       p.input.firePressed = false;
@@ -368,6 +411,7 @@ export class Battle implements GameScene, WeaponContext {
     this.time += dt;
     this.moveCtx.time = this.time;
     this.interactives.update(dt);
+    this.ai.update(dt);
     for (const s of this.soldiers) {
       if (s.dummy && !s.alive) continue;
       stepMovement(s, dt, this.moveCtx);
@@ -442,7 +486,7 @@ export class Battle implements GameScene, WeaponContext {
       this.viewmodel.visible = false;
       this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
       this.hud?.root.classList.add('hidden');
-    }
+    } else if (flags.spectate) this.spectateCamera(frameDt, alpha, vm);
     this.water?.update(frameDt);
     this.projectiles.render(this, alpha);
     this.throwables.render(alpha);
@@ -453,7 +497,7 @@ export class Battle implements GameScene, WeaponContext {
     this.renderer.render(this.scene, this.fp.camera, this.viewmodel.scene, this.viewmodel.camera);
 
     // HUD (hidden while a debug camera is set).
-    if (this.hud && !this.debugCam) {
+    if (this.hud && !this.debugCam && !flags.spectate) {
       const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
       const hit = this.collision.raycast(this.fp.camera.position, aim, 1500, { ignore: p });
       const enemy = !!hit && hit.kind === 'soldier' && (hit.ref as Soldier).team !== p.team;
@@ -477,6 +521,34 @@ export class Battle implements GameScene, WeaponContext {
     this.debug.speed = `${speed.toFixed(1)} m/s  y ${p.pos.y.toFixed(1)}`;
     if (this.attachClicked) this.attachClicked = false;
     input.endFrame();
+  }
+
+  private spectated: Soldier | null = null;
+  private spectateT = 0;
+
+  /** Debug spectator: over-the-shoulder view of a bot in a firefight (switches every few seconds). */
+  private spectateCamera(frameDt: number, alpha: number, vm: ViewmodelState): void {
+    this.spectateT += frameDt;
+    const cur = this.spectated;
+    if (!cur || !cur.alive || this.spectateT > 14) {
+      let pick: Soldier | null = null;
+      for (const b of this.ai.brains.values()) if (b.s !== this.player && b.s.alive && b.mode === 'combat' && b.targetVisible) pick = b.s;
+      if (pick || !cur?.alive) {
+        this.spectated = pick ?? this.soldiers.find((s) => s.alive && s !== this.player) ?? null;
+        this.spectateT = 0;
+      }
+    }
+    const s = this.spectated;
+    if (!s) return;
+    const p = _v.copy(s.prevPos).lerp(s.pos, alpha);
+    const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+    const cam = this.fp.camera;
+    cam.position.set(p.x - fx * 3.4 + fz * 0.9, p.y + 2.3, p.z - fz * 3.4 - fx * 0.9);
+    cam.lookAt(p.x + fx * 12, p.y + 1.4 + Math.sin(s.pitch) * 12, p.z + fz * 12);
+    cam.updateMatrixWorld();
+    this.viewmodel.visible = false;
+    this.viewmodel.update(frameDt, cam, vm, this.renderer.aspect);
+    this.hud?.root.classList.add('hidden');
   }
 
   private drawSoldier(s: Soldier, alpha: number, dt: number): void {

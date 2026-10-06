@@ -18,6 +18,8 @@ export interface LaunchFlags {
   scene: string | null;
   /** Fixed debug camera 'x,y,z,tx,ty,tz' for screenshots (hides HUD and viewmodel). */
   cam: number[] | null;
+  /** Debug: third-person camera that follows a bot in a firefight. */
+  spectate: boolean;
 }
 
 function parse(search: string): LaunchFlags {
@@ -41,6 +43,7 @@ function parse(search: string): LaunchFlags {
     bots: num('bots'),
     scene: q.get('scene'),
     cam: q.get('cam') ? q.get('cam')!.split(',').map(Number) : null,
+    spectate: on('spectate'),
   };
 }
 

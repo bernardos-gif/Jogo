@@ -41,6 +41,18 @@ One line per choice. Newest entries are appended at the end of each section.
 - The rocket on pad A carries colliders until the launch event lifts it off.
 - Fog reaches further than in Elemental Brawl (fog end 600-1150 m by preset) so long sightlines across the port stay readable.
 
+## Bots and Sector Control
+
+- Default difficulty is Veteran; Recruit and Elite are the other two presets (Settings, M11).
+- Bot aim error is measured in meters at the target and converted to an angle, so accuracy reads naturally at every range; the error wanders around the target (an Ornstein-Uhlenbeck process) instead of snapping.
+- Far bots fighting far bots resolve shots analytically against the target's hitboxes (perception already checked the sight line); anything involving the player always runs the full projectile simulation.
+- `--bots=N` sets the team size (N per team, clamped to 8-32); the default comes from Settings (24).
+- All five zones start neutral; both teams race from their HQs.
+- A downed bot with no teammate within 45 m gives up after 8 s, which keeps the respawn flow moving.
+- Bot class mix: 34% assault, 22% engineer, 24% support, 20% recon, each with a class-appropriate weapon pool and random attachments.
+- Squad callsigns are invented (Aster, Bastion, Cinder, Drift, Ember, Flux, Gale, Halo, Ion, Juniper, Kite, Lumen); the player leads nothing and joins Aster squad.
+- Bots spot enemies they see (6 s cooldown) and sometimes ping them, the same way a player would.
+
 ## UI
 
 - Fonts: Rajdhani (display), Inter (body), JetBrains Mono (tabular numerals).

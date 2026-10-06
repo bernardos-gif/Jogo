@@ -223,7 +223,7 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(90deg, transparent calc(10% - 1px), var(--ink) calc(10% - 1px), var(--ink) 10%);
+  background-image: linear-gradient(90deg, transparent calc(100% - 1px), var(--ink) calc(100% - 1px));
   background-size: 10% 100%;
   opacity: 0.85;
 }

@@ -6,6 +6,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { SoldierAnimator, type BodyMode } from '../art/soldierAnim';
 import type { ClassId, SpecialistId, TeamId, ThrowableId, WeaponId } from '../config/content';
 import type { Ladder, Zipline, Elevator } from '../world/interactives';
+import type { Arsenal } from '../weapons/arsenal';
 
 export interface SoldierInput {
   /** Strafe (+right) and forward (+forward), each -1..1. */
@@ -170,6 +171,8 @@ export class Soldier {
   reviveProgress = 0;
   reviverId = -1;
   spawnProtectT = 0;
+  /** EMP disruption (HUD scramble, gadgets offline). */
+  empT = 0;
 
   // ---- Spotting and comms
   spottedUntil = 0;
@@ -186,6 +189,11 @@ export class Soldier {
   /** Vehicle seat while mounted. */
   vehicleId = -1;
   seat = -1;
+
+  /** Weapons, throwables and melee state (assigned when the soldier joins a battle). */
+  arsenal!: Arsenal;
+  /** Training dummies stand still and never act. */
+  dummy = false;
 
   readonly stats: SoldierStats = { kills: 0, deaths: 0, assists: 0, revives: 0, captures: 0, score: 0, damage: 0, headshots: 0, spots: 0, vehicleKills: 0 };
 

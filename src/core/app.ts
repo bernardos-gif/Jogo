@@ -13,6 +13,8 @@ import type { GameScene } from '../scenes/gameScene';
 import { StyleScene } from '../scenes/styleScene';
 import { Battle } from '../modes/battle';
 import { buildTraining } from '../world/maps/training';
+import { RangeMode } from '../modes/range';
+import { WEAPON_BY_ID } from '../config/content';
 
 export type AppState = 'boot' | 'menu' | 'deploy' | 'playing' | 'paused' | 'dead' | 'end';
 
@@ -69,7 +71,8 @@ export class App {
     } else {
       splash.progress(0.4, 'Building training ground');
       await new Promise((r) => setTimeout(r, 0));
-      this.battle = await Battle.create(this.renderer, buildTraining());
+      this.battle = await Battle.create(this.renderer, buildTraining(), this.ui);
+      this.battle.setMode(new RangeMode());
       this.scene = this.battle;
     }
     splash.progress(1, 'Ready');
@@ -86,19 +89,51 @@ export class App {
     this.overlay.classList.toggle('hidden', !show);
   }
 
-  /** Scripted pilot for automated runs until bot AI drives the player (M5). */
+  /** Scripted pilot for automated runs until bot AI drives the player (M5): walks to the firing line and shoots targets. */
   private autopilot(dt: number): void {
     const b = this.battle;
     if (!b) return;
     this.autoT += dt;
-    const i = b.player.input;
-    i.moveZ = 1;
-    i.moveX = Math.sin(this.autoT * 0.3) * 0.4;
-    i.sprint = this.autoT % 20 > 10;
-    b.controller.setAim(b.controller.yaw + dt * 0.25, Math.sin(this.autoT * 0.5) * 0.2);
+    const p = b.player;
+    const i = p.input;
+    const t = this.autoT;
+    i.sprint = false;
+    i.fire = false;
+    i.aim = false;
+    if (p.pos.z > -66) {
+      i.moveZ = 1;
+      i.moveX = 0;
+      i.sprint = t > 3;
+      b.controller.setAim(0, 0);
+    } else {
+      i.moveZ = 0;
+      const targets = b.soldiers.filter((s) => s.dummy && s.alive && !s.downed && s.pos.distanceTo(p.pos) < 120);
+      targets.sort((a, c) => a.pos.distanceTo(p.pos) - c.pos.distanceTo(p.pos));
+      const tg = targets[Math.floor(t / 4) % Math.max(1, targets.length)];
+      if (tg) {
+        const dx = tg.pos.x - p.pos.x, dz = tg.pos.z - p.pos.z;
+        const dy = tg.pos.y + 1.1 - (p.pos.y + p.eye);
+        const yaw = Math.atan2(-dx, -dz);
+        const pitch = Math.atan2(dy, Math.hypot(dx, dz));
+        b.controller.setAim(b.controller.yaw + (yaw - b.controller.yaw) * Math.min(1, dt * 8), b.controller.pitch + (pitch - b.controller.pitch) * Math.min(1, dt * 8));
+        i.aim = t % 6 > 1.5;
+        const burst = (t * 1.6) % 1 < 0.55;
+        i.fire = burst;
+        if (burst && Math.floor(t * 1.6) !== Math.floor((t - dt) * 1.6)) i.firePressed = true;
+      }
+      if (Math.floor(t / 13) !== Math.floor((t - dt) / 13)) i.grenade = true;
+      // Periodically swap a random attachment through the menu (exercises live model changes).
+      b.forceAttachMenu = t % 9 > 7.2;
+      if (Math.floor(t / 9) !== Math.floor((t - dt) / 9)) {
+        const w = p.arsenal.current;
+        const info = WEAPON_BY_ID[w.id];
+        const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)];
+        b.setAttachments({ sight: pick(info.sights), barrel: pick(info.barrels), underbarrel: pick(info.underbarrels), ammo: pick(info.ammos) });
+      }
+      if (Math.floor(t / 17) !== Math.floor((t - dt) / 17)) i.slot = (p.arsenal.slot + 1) % 3;
+    }
     i.yaw = b.controller.yaw;
     i.pitch = b.controller.pitch;
-    if (Math.floor(this.autoT * 0.5) !== Math.floor((this.autoT - dt) * 0.5)) i.jump = true;
   }
 
   private tick = (now: number): void => {

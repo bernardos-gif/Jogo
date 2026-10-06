@@ -162,13 +162,18 @@ export class Viewmodel {
     const ret = damp(V.swayReturn, dt);
     this.swayX -= this.swayX * ret;
     this.swayY -= this.swayY * ret;
+    // Stiff springs: sub-step so long frames (hitches, slow GPUs) stay stable.
     const k = V.recoilStiffness, c = V.recoilDamping;
-    this.recoilZv += (-k * this.recoilZ - c * this.recoilZv) * dt;
-    this.recoilZ += this.recoilZv * dt;
-    this.recoilPv += (-k * this.recoilP - c * this.recoilPv) * dt;
-    this.recoilP += this.recoilPv * dt;
-    this.recoilRv += (-k * this.recoilR - c * this.recoilRv) * dt;
-    this.recoilR += this.recoilRv * dt;
+    const sub = Math.max(1, Math.ceil(dt * 120));
+    const h = dt / sub;
+    for (let i = 0; i < sub; i++) {
+      this.recoilZv += (-k * this.recoilZ - c * this.recoilZv) * h;
+      this.recoilZ += this.recoilZv * h;
+      this.recoilPv += (-k * this.recoilP - c * this.recoilPv) * h;
+      this.recoilP += this.recoilPv * h;
+      this.recoilRv += (-k * this.recoilR - c * this.recoilRv) * h;
+      this.recoilR += this.recoilRv * h;
+    }
     // Bob.
     const moving = st.grounded && st.speed > 0.4 ? clamp(st.speed / 6, 0, 1.3) : 0;
     this.bobK += (moving - this.bobK) * damp(8, dt);

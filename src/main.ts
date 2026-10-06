@@ -10,6 +10,7 @@ import '@fontsource/jetbrains-mono/600.css';
 import './ui/styles/tokens.css';
 import './ui/styles/base.css';
 import './ui/styles/screens.css';
+import './ui/styles/hud.css';
 import { App } from './core/app';
 
 const root = document.getElementById('app')!;

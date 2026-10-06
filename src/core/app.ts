@@ -14,6 +14,8 @@ import { StyleScene } from '../scenes/styleScene';
 import { Battle } from '../modes/battle';
 import { buildTraining } from '../world/maps/training';
 import { RangeMode } from '../modes/range';
+import { FreeplayMode } from '../modes/freeplay';
+import { buildBreakwater } from '../world/maps/breakwater';
 import { WEAPON_BY_ID } from '../config/content';
 
 export type AppState = 'boot' | 'menu' | 'deploy' | 'playing' | 'paused' | 'dead' | 'end';
@@ -68,11 +70,18 @@ export class App {
       splash.progress(0.6, 'Building style test scene');
       await new Promise((r) => setTimeout(r, 0));
       this.scene = new StyleScene(this.renderer);
-    } else {
+    } else if (flags.scene === 'range') {
       splash.progress(0.4, 'Building training ground');
       await new Promise((r) => setTimeout(r, 0));
       this.battle = await Battle.create(this.renderer, buildTraining(), this.ui);
       this.battle.setMode(new RangeMode());
+      this.scene = this.battle;
+    } else {
+      const t0 = performance.now();
+      const map = buildBreakwater((f, l) => splash.progress(0.2 + f * 0.6, l));
+      this.battle = await Battle.create(this.renderer, map, this.ui, (f, l) => splash.progress(f, l));
+      this.battle.setMode(new FreeplayMode());
+      this.battle.debug.load = `load ${((performance.now() - t0) / 1000).toFixed(1)} s`;
       this.scene = this.battle;
     }
     splash.progress(1, 'Ready');
@@ -85,7 +94,7 @@ export class App {
   }
 
   private updateOverlay(): void {
-    const show = this.state === 'playing' && !flags.autoplay && !input.locked && !!this.battle;
+    const show = this.state === 'playing' && !flags.autoplay && !flags.cam && !input.locked && !!this.battle;
     this.overlay.classList.toggle('hidden', !show);
   }
 

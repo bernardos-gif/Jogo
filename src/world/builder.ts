@@ -37,6 +37,8 @@ interface Solid {
   center: THREE.Vector3;
   half: THREE.Vector3;
   rotY: number;
+  /** Full orientation (ramps); overrides rotY when set. */
+  quat?: THREE.Quaternion;
   surface: Surface;
   thin: boolean;
   nav: boolean;
@@ -84,6 +86,11 @@ export class WorldBuilder {
   /** Invisible collision for a decorative shape. */
   collider(center: THREE.Vector3, half: THREE.Vector3, rotY: number, surface: Surface, thin = false, nav = true): void {
     this.solids.push({ center: center.clone(), half: half.clone(), rotY, surface, thin, nav });
+  }
+
+  /** Invisible oriented collision (ramps, tilted slabs). */
+  colliderOriented(center: THREE.Vector3, half: THREE.Vector3, rot: THREE.Euler, surface: Surface, nav = true): void {
+    this.solids.push({ center: center.clone(), half: half.clone(), rotY: rot.y, quat: new THREE.Quaternion().setFromEuler(rot), surface, thin: false, nav });
   }
 
   /** Places a prop (static). Collision from its half-extents unless `collide` is false. */
@@ -180,11 +187,12 @@ export class WorldBuilder {
     const bvhParts: THREE.BufferGeometry[] = [];
     const navParts: THREE.BufferGeometry[] = [];
     for (const s of this.solids) {
-      physics.addStaticBox(s.center, s.half, s.rotY);
+      if (s.quat) physics.addStaticOrientedBox(s.center, s.half, s.quat);
+      else physics.addStaticBox(s.center, s.half, s.rotY);
       const g = new THREE.BoxGeometry(s.half.x * 2, s.half.y * 2, s.half.z * 2).toNonIndexed();
       g.deleteAttribute('uv');
       g.deleteAttribute('normal');
-      g.applyMatrix4(new THREE.Matrix4().makeRotationY(s.rotY).setPosition(s.center));
+      g.applyMatrix4((s.quat ? new THREE.Matrix4().makeRotationFromQuaternion(s.quat) : new THREE.Matrix4().makeRotationY(s.rotY)).setPosition(s.center));
       const n = g.getAttribute('position').count;
       g.setAttribute('surf', new THREE.BufferAttribute(new Float32Array(n).fill(CollisionWorld.surfaceCode(s.surface, s.thin)), 1));
       bvhParts.push(g);

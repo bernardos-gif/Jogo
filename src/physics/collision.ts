@@ -31,7 +31,7 @@ export interface DynBox {
   inv: THREE.Matrix4;
   surface: Surface;
   thin: boolean;
-  kind: 'destructible' | 'shield' | 'gadget';
+  kind: 'destructible' | 'shield' | 'gadget' | 'prop';
   ref: unknown;
   active: boolean;
   /** Blocks AI line of sight. */

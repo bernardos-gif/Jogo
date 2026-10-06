@@ -9,15 +9,8 @@ import { barrier, crate, lampPost, sandbags, techCrate, container, CONTAINER_COL
 import { box } from '../../render/toon';
 import type { Surface } from '../surface';
 
-export interface MapBuild {
-  terrain: Terrain;
-  builder: WorldBuilder;
-  spawn: THREE.Vector3;
-  spawnYaw: number;
-  /** Firing lane origin and direction (training only). */
-  laneOrigin: THREE.Vector3;
-  water: number | null;
-}
+import type { MapBuild } from './mapBuild';
+export type { MapBuild };
 
 const PAD = 0xcdbba2;
 const PAD2 = 0xc2ae95;
@@ -119,5 +112,5 @@ export function buildTraining(): MapBuild {
   for (let i = 0; i < 6; i++) b.prop(lampPost(), xf({ x: i % 2 ? 16 : -16, z: -20 - i * 30, ry: i % 2 ? Math.PI : 0 }), 'metal');
   for (let i = 0; i < 4; i++) b.prop(container(CONTAINER_COLORS[(i + 2) % 6]), xf({ x: 95, z: -60 + i * 30, ry: Math.PI / 2 }), 'metal');
 
-  return { terrain, builder: b, spawn: v(0, 0.35, 30), spawnYaw: 0, laneOrigin: lane, water: null };
+  return { id: 'training', terrain, builder: b, spawn: v(0, 0.35, 30), spawnYaw: 0, laneOrigin: lane, water: null, combatLimit: 300 };
 }

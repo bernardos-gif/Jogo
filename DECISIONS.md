@@ -30,6 +30,17 @@ One line per choice. Newest entries are appended at the end of each section.
 - Soldiers keep the 15-joint toy-figure proportions at 0.86 scale (about 1.85 m), with helmets and glowing visors instead of faces.
 - Terrain has no outline: its flat-shaded facets carry the shape, as Elemental Brawl's floor tiles do.
 
+## Map
+
+- North is -Z: Halcyon Accord holds the south HQ, Korvath Pact the north HQ; the sea runs along the east edge so B Moorings sits on the waterline.
+- Districts sit on flattened pads, so every capture zone is fightable on foot; E Ridgeline sits on a 46 m hill for the verticality the brief asks for.
+- Roads are separate ribbons laid over smoothed road beds and lifted to the highest nearby terrain facet, so no facet pokes through.
+- Destructibles stay out of the navmesh (bots path through where walls used to stand, and treat standing walls as obstacles through line-of-sight checks).
+- Water is shallow everywhere: soldiers wade at reduced speed instead of swimming; vehicles cross it.
+- The Skirmish arena is Core Plaza (C) fenced at a 105 m radius.
+- The rocket on pad A carries colliders until the launch event lifts it off.
+- Fog reaches further than in Elemental Brawl (fog end 600-1150 m by preset) so long sightlines across the port stay readable.
+
 ## UI
 
 - Fonts: Rajdhani (display), Inter (body), JetBrains Mono (tabular numerals).

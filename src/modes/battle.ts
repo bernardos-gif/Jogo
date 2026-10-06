@@ -31,7 +31,13 @@ import { SoldierTargets } from '../weapons/hitboxes';
 import { stepHealth } from '../weapons/damage';
 import { Hud } from '../ui/hud/hud';
 import { SPECIALIST_BY_ID, type ClassId, type SpecialistId, type TeamId, type ThrowableId, type WeaponId } from '../config/content';
-import type { MapBuild } from '../world/maps/training';
+import type { MapBuild } from '../world/maps/mapBuild';
+import { Destructibles, type Destructible } from '../world/destruction';
+import { Water } from '../world/water';
+import { Rocket } from '../world/rocket';
+import { flags } from '../core/flags';
+import { buildNavMesh, GridNav, type PathFinder } from '../world/nav';
+import { explode, killSoldier } from '../weapons/damage';
 import type { Renderer } from '../render/renderer';
 import type { Interactives } from '../world/interactives';
 import type { Terrain } from '../world/terrain';
@@ -85,9 +91,44 @@ export class Battle implements GameScene, WeaponContext {
   /** Automated runs open the attachment menu without input. */
   forceAttachMenu = false;
 
-  static async create(renderer: Renderer, map: MapBuild, ui: HTMLElement | null): Promise<Battle> {
+  readonly destructibles: Destructibles;
+  readonly water: Water | null = null;
+  readonly rocket: Rocket | null = null;
+  nav: PathFinder | null = null;
+  private navGeometry: THREE.BufferGeometry;
+  /** Fixed debug camera from ?cam=x,y,z,tx,ty,tz (screenshots). */
+  private debugCam: number[] | null = null;
+
+  static async create(renderer: Renderer, map: MapBuild, ui: HTMLElement | null, onProgress?: (f: number, label: string) => void): Promise<Battle> {
     await initPhysics();
-    return new Battle(renderer, map, ui);
+    onProgress?.(0.55, 'Assembling the world');
+    await new Promise((r) => setTimeout(r, 0));
+    const b = new Battle(renderer, map, ui);
+    onProgress?.(0.7, 'Building navigation mesh');
+    await new Promise((r) => setTimeout(r, 0));
+    await b.buildNav();
+    return b;
+  }
+
+  private async buildNav(): Promise<void> {
+    const t = this.terrain.indexedGeometry();
+    const tp = t.getAttribute('position').array as Float32Array;
+    const ti = t.index!.array as Uint32Array;
+    const sp = this.navGeometry.getAttribute('position')?.array as Float32Array | undefined;
+    const sn = sp ? sp.length / 3 : 0;
+    const positions = new Float32Array(tp.length + (sp?.length ?? 0));
+    positions.set(tp, 0);
+    if (sp) positions.set(sp, tp.length);
+    const indices = new Uint32Array(ti.length + sn);
+    indices.set(ti, 0);
+    const base = tp.length / 3;
+    for (let i = 0; i < sn; i++) indices[ti.length + i] = base + i;
+    const half = this.terrain.size / 2;
+    this.nav = await buildNavMesh({ positions, indices, interactives: this.interactives, bounds: [[-half, -20, -half], [half, 160, half]] });
+    if (!this.nav) {
+      this.nav = new GridNav(-half, 4, this.terrain.size, (x, z) => this.terrain.heightAt(x, z), () => false);
+      this.debug.nav = 'grid A* (fallback)';
+    } else this.debug.nav = 'navmesh';
   }
 
   private constructor(
@@ -99,7 +140,7 @@ export class Battle implements GameScene, WeaponContext {
     this.physics = new Physics();
     this.terrain = map.terrain;
     this.terrain.install(this.scene, this.physics, this.collision);
-    map.builder.finalize(this.scene, this.physics, this.collision);
+    this.navGeometry = map.builder.finalize(this.scene, this.physics, this.collision).navGeometry;
     this.interactives = map.builder.interactives;
     this.scene.fog = new THREE.Fog(0xf2a77a, q.fogNear, q.fogFar);
     this.scene.background = new THREE.Color(0xf2a77a);
@@ -109,6 +150,18 @@ export class Battle implements GameScene, WeaponContext {
     this.lighting.applyQuality(q);
     this.vfx = new VFX(this.scene, q);
     this.vfx.ground = (x, z) => this.terrain.heightAt(x, z);
+    this.destructibles = new Destructibles(this.scene, map.builder.destructibles, this.physics, this.collision, this.vfx);
+    this.destructibles.onExplode = (d) => this.fuelExplosion(d);
+    this.destructibles.onDestroyed = (d) => this.events.emit('destruct', { pos: d.center.clone(), kind: d.kind });
+    if (map.water !== null && map.seaX !== undefined) {
+      this.water = new Water(map.water, map.seaX - 60, 1700, -1700, 1700);
+      this.scene.add(this.water.mesh);
+    }
+    if (map.rocket) {
+      this.rocket = new Rocket(map.rocket, this.physics, this.collision);
+      this.scene.add(this.rocket.group);
+    }
+    this.debugCam = flags.cam;
     this.crowd = new CrowdRenderer(this.scene, 40);
     this.crowd.warm();
     this.weaponCrowd = new WeaponCrowd(this.scene, 64);
@@ -125,8 +178,10 @@ export class Battle implements GameScene, WeaponContext {
       groundHeight: (x, z) => this.terrain.heightAt(x, z),
       hasWingsuit: (s) => SPECIALIST_BY_ID[s.specialist].passiveName === 'Wingsuit',
       onLand: (s, impact) => this.onLand(s, impact),
-      onOutOfBounds: () => undefined,
-      speedMul: (s) => (s.arsenal ? s.arsenal.current.stats.moveMul : 1),
+      onOutOfBounds: (s, left) => {
+        if (left <= 0 && s.alive) killSoldier(this, s);
+      },
+      speedMul: (s) => (s.arsenal ? s.arsenal.current.stats.moveMul : 1) * (this.map.water !== null && s.pos.y < this.map.water - 0.4 ? TUNING.movement.wadeMul : 1),
       aiming: (s) => !!s.arsenal && s.arsenal.adsK > 0.5,
     };
 
@@ -218,14 +273,20 @@ export class Battle implements GameScene, WeaponContext {
   horizontalSpeed(s: Soldier): number {
     return Math.hypot(s.vel.x, s.vel.z);
   }
-  onExplosion(pos: THREE.Vector3, radius: number, damage: number): void {
+  onExplosion(pos: THREE.Vector3, radius: number, damage: number, _attacker: Soldier | null, _vehicleDamage: number, kind: string): void {
     const d = this.fp.camera.position.distanceTo(pos);
     const R = TUNING.camera.explosionShakeRadius;
     if (d < R) this.fp.addTrauma(clamp((1 - d / R) * damage * TUNING.explosions.shakePerDamage, 0, 0.8));
-    void radius;
+    if (kind !== 'emp' && damage > 0) this.destructibles.radiusDamage(pos, radius * TUNING.destruction.explosionRadiusMul, damage * TUNING.destruction.explosionDamageMul);
   }
-  damageObject(): boolean {
+  damageObject(ref: unknown, _kind: string, damage: number): boolean {
+    if (ref && typeof ref === 'object' && 'maxHp' in ref) return this.destructibles.damage(ref as Destructible, damage * TUNING.destruction.bulletMul);
     return false;
+  }
+
+  private fuelExplosion(d: Destructible): void {
+    const F = TUNING.destruction.fuelTank;
+    explode(this, d.center, { radius: F.radius, damage: F.damage, inner: F.inner, attacker: null, weapon: 'Fuel tank', kind: 'fuel', vehicleDamage: F.vehicleDamage });
   }
   smokeBlocks(a: THREE.Vector3, b: THREE.Vector3): boolean {
     return this.throwables.blocks(a, b);
@@ -373,6 +434,16 @@ export class Battle implements GameScene, WeaponContext {
     this.viewmodel.copyLights(this.lighting);
     this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
 
+    if (this.debugCam && this.debugCam.length >= 6) {
+      const c = this.debugCam;
+      this.fp.camera.position.set(c[0], c[1], c[2]);
+      this.fp.camera.lookAt(c[3], c[4], c[5]);
+      this.fp.camera.updateMatrixWorld();
+      this.viewmodel.visible = false;
+      this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
+      this.hud?.root.classList.add('hidden');
+    }
+    this.water?.update(frameDt);
     this.projectiles.render(this, alpha);
     this.throwables.render(alpha);
     this.vfx.update(frameDt);
@@ -381,8 +452,8 @@ export class Battle implements GameScene, WeaponContext {
     this.vfx.flushTracers();
     this.renderer.render(this.scene, this.fp.camera, this.viewmodel.scene, this.viewmodel.camera);
 
-    // HUD.
-    if (this.hud) {
+    // HUD (hidden while a debug camera is set).
+    if (this.hud && !this.debugCam) {
       const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
       const hit = this.collision.raycast(this.fp.camera.position, aim, 1500, { ignore: p });
       const enemy = !!hit && hit.kind === 'soldier' && (hit.ref as Soldier).team !== p.team;

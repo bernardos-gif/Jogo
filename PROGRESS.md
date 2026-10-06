@@ -9,14 +9,17 @@
 
 - M3: gunplay. All 12 weapons with stats in `tuning.ts` (falloff, head/limb multipliers, fire modes, mags, reloads, velocity and drop, ADS and sprint-to-fire, spread and bloom, deterministic recoil patterns, penetration, heat for the Torrent, bolt and pump cycling, rocket lock-on); attachment modifiers; pooled swept-ray projectiles with penetration and homing rockets; damage rules (armor plates, downed, finish, bleed-out, revive with medic speed, assists, regeneration); explosions with occlusion and knockback; frag / smoke / EMP throwables; melee takedowns; analytic hitboxes; event bus; HUD crosshair (real spread), hit markers (hit / head / armor / kill), weapon panel, scope overlays, hold-T attachment cross menu with live swaps and stat bars; firing range with static, strafing and armored targets and a TTK readout; unit tests for falloff, ballistics, recoil determinism, attachments and damage rules.
 
+- M4: Breakwater Launch Port. 1.2 km FBM terrain with a ridge under E, edge mountains, beach and shallow animated sea, flattened district and HQ pads, smoothed road beds; five districts (A Gantry: launch pad with ramps, lattice gantry tower with an elevator, rocket with colliders, fuel farm tagged for the launch event, launch control building; B Moorings: container stacks, two gantry cranes with a zipline to the deck, a cargo ship boarded by a gangway, warehouses; C Core Plaza: three office towers with stairwells, an external elevator, a zipline triangle between the roofs, a covered arcade, holo plinths and planters; D Sunfield: ten rows of destructible solar panels, inverter huts, a fenced substation; E Ridgeline: relay antennas on the hilltop, three bunkers, a sandbag trench ring, a relay building); two HQs with vehicle pads; road ribbons with kerbs, dashes and lamps; 400 scattered rocks, crates and barriers; destructible crates, walls, panels and chain-reacting fuel tanks (instanced, with debris, colliders and explosions); recast tiled navmesh with ladder / zipline / elevator links and a grid A* fallback; out-of-bounds kills and wading slow-down; free-play spawn mode; GridNav unit tests.
+
 ## In progress
-
-- M4: map.
-
-## Next
 
 - M5: bots.
 
+## Next
+
+- M6: Sector Control.
+
 ## Known gaps
 
+- The developer readout (load time, nav kind, movement state) shows under the crosshair until the HUD pass in M7 moves it behind a setting.
 - Settings for FOV and sensitivity are live in the save model and used by the camera and controller; their on-screen sliders arrive with the Settings screen (M7).

@@ -80,6 +80,7 @@ export const TUNING = {
     elevatorSpeed: 3.2,
     elevatorWait: 4,
     mapLimit: 585,
+    wadeMul: 0.62,
     outOfBoundsSeconds: 10,
   },
 
@@ -246,6 +247,15 @@ export const TUNING = {
     occludedMul: 0.35,
     shakePerDamage: 0.006,
     selfDamageMul: 0.6,
+  },
+
+  // ---------------------------------------------------------------------------------------------
+  // Destruction
+  destruction: {
+    bulletMul: 1,
+    explosionDamageMul: 1.6,
+    explosionRadiusMul: 1.15,
+    fuelTank: { radius: 12, damage: 150, inner: 4, vehicleDamage: 420 },
   },
 
   // ---------------------------------------------------------------------------------------------

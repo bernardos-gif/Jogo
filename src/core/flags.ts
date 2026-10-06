@@ -16,6 +16,8 @@ export interface LaunchFlags {
   bots: number | null;
   /** Developer scenes: 'style' (M1 style test), 'range' (firing range). */
   scene: string | null;
+  /** Fixed debug camera 'x,y,z,tx,ty,tz' for screenshots (hides HUD and viewmodel). */
+  cam: number[] | null;
 }
 
 function parse(search: string): LaunchFlags {
@@ -38,6 +40,7 @@ function parse(search: string): LaunchFlags {
     preset: preset === 'low' || preset === 'medium' || preset === 'high' || preset === 'ultra' ? preset : null,
     bots: num('bots'),
     scene: q.get('scene'),
+    cam: q.get('cam') ? q.get('cam')!.split(',').map(Number) : null,
   };
 }
 

@@ -8,7 +8,7 @@ export class Lighting {
   readonly hemi = new THREE.HemisphereLight(0xffd6b0, 0x6a4a7a, 1.15);
   readonly ambient = new THREE.AmbientLight(0xffffff, 0.35);
   readonly sun = new THREE.DirectionalLight(0xffe0b8, 2.4);
-  private sunDir = new THREE.Vector3(-0.62, 0.22, -0.75).normalize();
+  readonly sunDir = new THREE.Vector3(-0.62, 0.22, -0.75).normalize();
   private shadowRadius = 70;
   private texel = 1;
 

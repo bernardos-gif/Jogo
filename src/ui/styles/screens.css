@@ -59,3 +59,37 @@
   bottom: var(--s5);
   color: var(--fg-faint);
 }
+
+/* ---- Click-to-play overlay and debug readout --------------------------------------------- */
+.click-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 8, 13, 0.35);
+  cursor: pointer;
+  z-index: 30;
+}
+.click-overlay.hidden {
+  display: none;
+}
+.click-overlay .panel {
+  padding: var(--s5) var(--s6);
+  text-align: center;
+}
+.click-overlay .display {
+  font-size: var(--fs-28);
+  margin-bottom: var(--s2);
+}
+.debug-readout {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  font-size: var(--fs-11);
+  color: var(--fg-dim);
+  white-space: pre;
+  text-align: center;
+  opacity: 0.8;
+}

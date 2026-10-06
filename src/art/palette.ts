@@ -44,11 +44,11 @@ export const FACTION_PALETTES: Record<TeamId, FactionPalette> = {
 
 /** Neutral weapon colors (weapons are shared by both factions). */
 export const WEAPON_COLORS = {
-  body: 0x3a3f4a,
-  dark: 0x22252c,
-  mid: 0x50566a,
-  light: 0x7a8296,
-  polymer: 0x2c3038,
+  body: 0x4c5466,
+  dark: 0x2c3038,
+  mid: 0x66708a,
+  light: 0x98a2b8,
+  polymer: 0x3a4050,
   brass: 0xd8a040,
   rocket: 0x6a7048,
 };

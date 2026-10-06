@@ -1,0 +1,47 @@
+// Launch flags. Electron forwards its command line (--autoplay, --smoke, ...) as URL query
+// parameters; the browser build reads the same parameters directly (e.g. ?autoplay=1).
+
+export type ModeId = 'sector' | 'skirmish';
+
+export interface LaunchFlags {
+  /** The player's soldier is driven by bot AI and matches start and restart by themselves. */
+  autoplay: boolean;
+  /** Headless smoke test: low preset, no audio output, test hooks. */
+  smoke: boolean;
+  /** Long soak run (same as smoke, but rounds chain until the harness stops). */
+  soak: boolean;
+  mode: ModeId | null;
+  seed: number | null;
+  preset: 'low' | 'medium' | 'high' | 'ultra' | null;
+  bots: number | null;
+  /** Developer scenes: 'style' (M1 style test), 'range' (firing range). */
+  scene: string | null;
+}
+
+function parse(search: string): LaunchFlags {
+  const q = new URLSearchParams(search);
+  const on = (k: string) => q.has(k) && q.get(k) !== '0' && q.get(k) !== 'false';
+  const num = (k: string) => {
+    const v = q.get(k);
+    if (v === null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const mode = q.get('mode');
+  const preset = q.get('preset');
+  return {
+    autoplay: on('autoplay'),
+    smoke: on('smoke'),
+    soak: on('soak'),
+    mode: mode === 'skirmish' || mode === 'sector' ? mode : null,
+    seed: num('seed'),
+    preset: preset === 'low' || preset === 'medium' || preset === 'high' || preset === 'ultra' ? preset : null,
+    bots: num('bots'),
+    scene: q.get('scene'),
+  };
+}
+
+export const flags: LaunchFlags = parse(typeof location !== 'undefined' ? location.search : '');
+
+/** True for any automated run (smoke or soak): disables audio output and enables test hooks. */
+export const automated = flags.smoke || flags.soak;

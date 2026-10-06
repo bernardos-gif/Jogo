@@ -1,0 +1,11 @@
+_reference/
+node_modules/
+dist/
+dist-electron/
+release/
+test-results/
+playwright-report/
+.vite/
+*.log
+.DS_Store
+smoke-artifacts/

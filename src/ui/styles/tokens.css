@@ -1,0 +1,73 @@
+/* Vector Front UI tokens. See UI_GUIDE.md. */
+:root {
+  --ink: #05080d;
+  --glass: rgba(8, 14, 22, 0.62);
+  --glass-strong: rgba(8, 14, 22, 0.84);
+  --glass-hi: rgba(30, 52, 70, 0.55);
+  --hair: rgba(170, 230, 255, 0.22);
+  --hair-strong: rgba(190, 240, 255, 0.55);
+  --fg: #e4f7ff;
+  --fg-dim: #8fb2c2;
+  --fg-faint: #4f6b78;
+  --cyan: #3fd7ff;
+  --cyan-glow: rgba(63, 215, 255, 0.35);
+  --amber: #ffb340;
+  --red: #ff4458;
+  --squad: #8dff7a;
+  --neutral: #c8d2dc;
+  --friend: #3fd7ff;
+  --foe: #ff4458;
+  --track: rgba(170, 230, 255, 0.12);
+  --grid: rgba(170, 230, 255, 0.04);
+
+  --font-display: 'Rajdhani', 'Arial Narrow', sans-serif;
+  --font-body: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Menlo', monospace;
+
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-18: 18px;
+  --fs-22: 22px;
+  --fs-28: 28px;
+  --fs-36: 36px;
+  --fs-48: 48px;
+  --fs-72: 72px;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-sweep: 420ms;
+  --t-panel: 220ms;
+  --t-glitch: 180ms;
+
+  --hud-scale: 1;
+  --hud-opacity: 1;
+}
+
+:root[data-palette='deuteranopia'] {
+  --friend: #4aa8ff;
+  --foe: #ffb000;
+  --squad: #f2f2f2;
+  --cyan: #4aa8ff;
+}
+:root[data-palette='protanopia'] {
+  --friend: #3f8cff;
+  --foe: #ffd23a;
+  --squad: #f2f2f2;
+  --cyan: #3f8cff;
+}
+:root[data-palette='tritanopia'] {
+  --friend: #00d6c0;
+  --foe: #ff3c78;
+  --squad: #ffffff;
+  --cyan: #00d6c0;
+}

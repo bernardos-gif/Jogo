@@ -1,0 +1,116 @@
+{
+  "name": "vector-front",
+  "productName": "Vector Front",
+  "version": "1.0.0",
+  "description": "Vector Front: a large-scale futuristic sector-control shooter.",
+  "author": "Vector Front",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "build:web": "vite build",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build:app": "npm run build:web && npm run build:electron",
+    "build": "npm run typecheck && npm run build:app && node scripts/package-mac.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "soak": "node scripts/smoke.mjs --soak",
+    "icon": "node scripts/make-icon.mjs",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build:app && npm run smoke",
+    "start": "npm run build:app && electron ."
+  },
+  "build": {
+    "appId": "com.vectorfront.game",
+    "productName": "Vector Front",
+    "copyright": "Copyright (c) 2026 Vector Front",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "en"
+    ],
+    "mac": {
+      "category": "public.app-category.action-games",
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSHighResolutionCapable": true,
+        "LSApplicationCategoryType": "public.app-category.action-games"
+      }
+    },
+    "dmg": {
+      "title": "Vector Front",
+      "artifactName": "Vector-Front-${version}-universal.${ext}",
+      "contents": [
+        {
+          "x": 170,
+          "y": 200
+        },
+        {
+          "x": 470,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 640,
+        "height": 400
+      }
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "category": "Game"
+    }
+  },
+  "devDependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@electron/universal": "^3.0.6",
+    "@eslint/js": "^10.0.1",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/rajdhani": "^5.3.0",
+    "@playwright/test": "^1.63.0",
+    "@recast-navigation/three": "^0.43.1",
+    "@types/node": "^22.20.5",
+    "@types/three": "^0.186.0",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "recast-navigation": "^0.43.1",
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  }
+}

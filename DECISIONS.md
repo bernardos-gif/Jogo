@@ -53,7 +53,15 @@ One line per choice. Newest entries are appended at the end of each section.
 - Squad callsigns are invented (Aster, Bastion, Cinder, Drift, Ember, Flux, Gale, Halo, Ion, Juniper, Kite, Lumen); the player leads nothing and joins Aster squad.
 - Bots spot enemies they see (6 s cooldown) and sometimes ping them, the same way a player would.
 
+- Kill credit and the kill-feed entry happen when a soldier is downed (the downing player earns the kill even if the victim is revived later); a finished or bled-out soldier costs the ticket.
+- The player joins every round on the deploy screen; bots deploy at their HQ right away.
+- Sector defense score: a kill where the killer or the victim stands inside a sector the killer's team owns.
+- XP: one XP per score point, plus 500 for a win and 250 for finishing the round; levels need 1200 XP growing 10% per level, up to level 50.
+- Unlock levels: Tern, Wasp, Anvil, Sable, Sparrow and Hammerhead from the start; Maul 2, Lumen 3, Flicker 4, Prism 6, Torrent 8, Longbow 10; attachment options 1/2/3 of every slot at levels 1/3/6.
+- `--tickets=N` overrides the starting tickets for tests; the smoke test drives the player's death and the end of round through test hooks.
+
 ## UI
+- The tactical map is captured once after load (an orthographic top-down render into height and normal targets with a line-treatment pass) and read back to a 2D canvas; live overlays are drawn on top with Canvas 2D every frame the map is visible.
 
 - Fonts: Rajdhani (display), Inter (body), JetBrains Mono (tabular numerals).
 - HUD team colors are relative to the player (cyan friend, red foe, green squad); factions keep their own 3D colors.

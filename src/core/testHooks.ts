@@ -15,6 +15,8 @@ export interface TestStats {
   vehiclesUsed: number;
   gadgetsUsed: number;
   stormEvents: number;
+  /** Match flow states visited since the stats were reset. */
+  flowVisited: string[];
   notes: string[];
 }
 
@@ -22,6 +24,8 @@ export interface TestHookSource {
   readonly state: string;
   testStats(): TestStats;
   resetTestStats(): void;
+  /** Scripted test actions ('downPlayer', 'killPlayer', 'endRound'). */
+  testAction(name: string): boolean;
 }
 
 declare global {
@@ -30,6 +34,7 @@ declare global {
       readonly state: string;
       stats(): TestStats;
       resetStats(): void;
+      act(name: string): boolean;
     };
   }
 }
@@ -41,5 +46,6 @@ export function installTestHooks(src: TestHookSource): void {
     },
     stats: () => src.testStats(),
     resetStats: () => src.resetTestStats(),
+    act: (name: string) => src.testAction(name),
   };
 }

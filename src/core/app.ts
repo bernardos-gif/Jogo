@@ -15,6 +15,8 @@ import { Battle } from '../modes/battle';
 import { buildTraining } from '../world/maps/training';
 import { RangeMode } from '../modes/range';
 import { SectorMode } from '../modes/sector/sectorMode';
+import { MatchFlow } from './flow';
+import { damageSoldier } from '../weapons/damage';
 import { buildBreakwater } from '../world/maps/breakwater';
 import { WEAPON_BY_ID } from '../config/content';
 
@@ -27,6 +29,8 @@ export class App {
   state: AppState = 'boot';
   scene: GameScene | null = null;
   battle: Battle | null = null;
+  flow: MatchFlow | null = null;
+  private flowVisited = new Set<string>();
   private frameMs = new RollingStat(TUNING.test.statsWindow);
   private stepMs = new RollingStat(TUNING.test.statsWindow);
   private frames = 0;
@@ -45,7 +49,7 @@ export class App {
     this.renderer = new Renderer(this.canvas);
     window.addEventListener('resize', () => this.scene?.resize(this.renderer.aspect));
     input.attach(this.canvas);
-    this.overlay = h('div', { class: 'click-overlay hidden interactive' }, h('div', { class: 'panel brackets scan-in' }, h('div', { class: 'display', text: 'Click to deploy' }), h('div', { class: 'label', text: 'Mouse is captured while playing · Esc releases it' })));
+    this.overlay = h('div', { class: 'click-overlay hidden interactive' }, h('div', { class: 'panel brackets scan-in' }, h('div', { class: 'display', text: 'Click to resume' }), h('div', { class: 'label', text: 'Mouse is captured while playing · Esc releases it' })));
     this.overlay.addEventListener('click', () => input.requestLock());
     this.ui.appendChild(this.overlay);
     this.debugEl = h('div', { class: 'debug-readout mono' });
@@ -80,7 +84,17 @@ export class App {
       const t0 = performance.now();
       const map = buildBreakwater((f, l) => splash.progress(0.2 + f * 0.6, l));
       this.battle = await Battle.create(this.renderer, map, this.ui, (f, l) => splash.progress(f, l));
-      this.battle.setMode(new SectorMode());
+      const mode = new SectorMode({ managedPlayer: true });
+      this.battle.setMode(mode);
+      splash.progress(0.95, 'Charting the tactical map');
+      await new Promise((r) => setTimeout(r, 0));
+      this.flow = new MatchFlow(this.battle, mode, this.ui, this.battle.captureTactical());
+      this.flow.onGameplay = (on) => {
+        input.gameplay = on && !flags.autoplay;
+        if (on && !flags.autoplay) input.requestLock();
+        else if (!on) input.exitLock();
+        this.updateOverlay();
+      };
       this.battle.debug.load = `load ${((performance.now() - t0) / 1000).toFixed(1)} s`;
       this.scene = this.battle;
     }
@@ -88,13 +102,14 @@ export class App {
     await splash.hide();
     this.state = 'playing';
     input.gameplay = !flags.autoplay;
+    this.flow?.start();
     this.updateOverlay();
     this.last = performance.now();
     requestAnimationFrame(this.tick);
   }
 
   private updateOverlay(): void {
-    const show = this.state === 'playing' && !flags.autoplay && !flags.cam && !flags.spectate && !input.locked && !!this.battle;
+    const show = this.state === 'playing' && !flags.autoplay && !flags.cam && !flags.spectate && !input.locked && !!this.battle && !this.flow?.menuOpen && this.flow?.state !== 'killcam';
     this.overlay.classList.toggle('hidden', !show);
   }
 
@@ -153,6 +168,12 @@ export class App {
     if (save.settings.dynamicResolution) this.renderer.trackFrame(frameMs, now / 1000);
     this.last = now;
     this.frames++;
+    if (this.flow) {
+      const before = this.flow.state;
+      this.flow.frame(dt);
+      if (this.flow.state !== before) this.updateOverlay();
+      this.flowVisited.add(this.flow.state);
+    }
     if (this.scene?.frame) this.scene.frame(dt);
     if (flags.autoplay && flags.scene === 'range') this.autopilot(dt);
     const step = 1 / TUNING.loop.hz;
@@ -189,11 +210,32 @@ export class App {
       vehiclesUsed: 0,
       gadgetsUsed: 0,
       stormEvents: 0,
-      notes: this.battle ? [JSON.stringify(this.battle.debug), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : ''] : [],
+      flowVisited: [...this.flowVisited],
+      notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : ''] : [],
     };
   }
 
+  testAction(name: string): boolean {
+    const b = this.battle;
+    if (!b) return false;
+    const p = b.player;
+    if (name === 'downPlayer' || name === 'killPlayer') {
+      if (!p.alive) return false;
+      const foe = b.soldiers.find((s) => s.team !== p.team && s.alive) ?? null;
+      p.spawnProtectT = 0;
+      p.armor = 0;
+      damageSoldier(b, p, name === 'killPlayer' ? 400 : p.health + 1, { attacker: foe, weapon: foe?.primary ?? 'tern', part: 'body', explosive: name === 'killPlayer', from: foe?.pos.clone() ?? p.pos.clone(), armorMul: 1 });
+      return true;
+    }
+    if (name === 'endRound' && b.mode instanceof SectorMode) {
+      b.mode.tickets.tickets[1] = 0;
+      return true;
+    }
+    return false;
+  }
+
   resetTestStats(): void {
+    this.flowVisited.clear();
     this.frameMs.reset();
     this.stepMs.reset();
     this.frames = 0;

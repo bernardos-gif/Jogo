@@ -13,13 +13,15 @@
 
 - M5: bots. AI director with level of detail by camera distance (think and perception every 0.1 / 0.22 / 0.5 s and 0.15 / 0.32 / 0.7 s; far bots shooting far bots resolve hits analytically against hitboxes without projectiles), a per-tick path budget over the recast navmesh, a cover-point grid with claims, spotting and pings, and near-miss suppression routing; squads of four that pick objectives by utility (ownership, contest state, distance, known threat, ticket pressure, crowding, hysteresis), with flank routes and regrouping; soldier brains with perception (field of view, hearing, close awareness, spotted targets, line of sight through smoke), human-like aim (reaction time, meters-at-target error that decays to a tracking floor growing with range, target speed and suppression, capped turn speed, lead and drop compensation, head bias), burst discipline and semi-auto cadence, ADS and stance by range, strafing, cover with hide and peek (over low cover, around tall cover), grenade arcs solved for range, grenade evasion, revives (medics search wider), search and suppressive fire on last known positions, ladder / zipline / elevator traversal from navmesh links, and stuck recovery; three difficulties; bot rosters with class mix, specialist, weapon, throwable and random attachments; Sector Control core (zones, capture, tickets, bleed, spawns on HQ / zones / squadmates) so 24v24 fights over objectives; `--autoplay` drives the player with a brain; `--spectate` debug camera; unit tests for capture, contest freeze, neutralize-then-capture, tickets, spawn rules, objective utility, aim determinism and convergence, turn rate and grenade arcs. 48 soldiers run at about 3 ms per sim tick.
 
+- M6: Sector Control. Capture with attacker scaling, contest freeze and neutralize-then-capture; tickets with bleed by zone lead and a ticket per death; squads of four; spawns on HQ, owned uncontested sectors and out-of-combat squadmates; scoring for kills, headshots, assists, sector defense, revives, captures, neutralizations and spots; match flow for the player (deploy screen, downed card with bleed-out, revive status and hold-to-give-up, kill cam card with killer, weapon, distance and their health, end-of-round banner and screen, next round); the deploy screen with a holographic tactical map (orthographic top-down capture rendered once into height and normal targets, then a line treatment with wall edges from the height Laplacian, contours, a 50 m grid, hillshade, water, roads and a dimmed out-of-bounds margin), selectable spawns, squad list, loadout quick-swap (class, specialist, primary with stat bars and level locks, throwable), tickets, sector row and deploy countdown; the end-of-round screen with winner, final tickets, MVP cards, personal stats with tick-ups and XP with level progress; local progression (XP, levels, weapon and attachment unlock levels, weapon mastery counters, unlock-all bypass); the smoke test now drives death, deploy and end of round; unit tests for scoring and progression.
+
 ## In progress
 
-- M6: Sector Control (deploy screen, round flow, end of round, scoring).
+- M7: HUD and menus.
 
 ## Next
 
-- M7: HUD and menus.
+- M8: classes, specialists, gadgets, call-in tablet.
 
 ## Known gaps
 

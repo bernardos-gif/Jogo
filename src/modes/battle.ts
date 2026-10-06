@@ -30,11 +30,13 @@ import { Throwables } from '../weapons/throwables';
 import { SoldierTargets } from '../weapons/hitboxes';
 import { stepHealth } from '../weapons/damage';
 import { Hud } from '../ui/hud/hud';
-import { SPECIALIST_BY_ID, type ClassId, type SpecialistId, type TeamId, type ThrowableId, type WeaponId } from '../config/content';
+import { attachmentUnlocked } from '../net-sim/unlocks';
+import { SPECIALIST_BY_ID, type AttachmentId, type ClassId, type SpecialistId, type TeamId, type ThrowableId, type WeaponId } from '../config/content';
 import type { MapBuild } from '../world/maps/mapBuild';
 import { Destructibles, type Destructible } from '../world/destruction';
 import { Water } from '../world/water';
 import { Rocket } from '../world/rocket';
+import { captureTacticalMap, type TacticalImage } from '../render/tacticalMap';
 import { flags } from '../core/flags';
 import { AIDirector, type AIHost } from '../ai/director';
 import { raySoldier } from '../weapons/hitboxes';
@@ -246,6 +248,40 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     if (s.isPlayer) this.controller.setAim(yaw, 0);
   }
 
+  /** Replaces a soldier's class, specialist and weapons (deploy screen loadout changes). */
+  applyLoadout(s: Soldier, cls: ClassId, spec: SpecialistId, primary: WeaponId, throwable: ThrowableId): void {
+    s.cls = cls;
+    s.specialist = spec;
+    s.primary = primary;
+    s.throwable = throwable;
+    const rocketBonus = SPECIALIST_BY_ID[spec].passiveName === 'Ordnance' ? 2 : 0;
+    s.arsenal = new Arsenal(primary, (id) => (s.isPlayer ? save.data.attachments[id] : undefined) ?? defaultAttachments(id), throwable, rocketBonus);
+    if (s.isPlayer) this.viewWeapon = null;
+  }
+
+  /** Renders the holographic tactical map image (once, after load). */
+  captureTactical(): TacticalImage {
+    return captureTacticalMap(this.renderer.gl, this.scene, {
+      worldSize: this.terrain.size,
+      water: this.map.water,
+      seaX: this.map.seaX,
+      limit: TUNING.movement.mapLimit,
+      roads: this.map.roads,
+      roadWidth: this.map.roadWidth,
+      hide: [this.sky.group, this.vfx.group, this.crowd.group, this.weaponCrowd.group],
+    });
+  }
+
+  /** Takes a soldier out of the world without a death (before the first deploy). */
+  park(s: Soldier, at: THREE.Vector3): void {
+    s.alive = false;
+    s.downed = false;
+    s.state = 'dead';
+    s.deadT = 1e6;
+    s.health = 0;
+    teleport(s, at);
+  }
+
   // ---- WeaponContext ---------------------------------------------------------------------------
   arsenal(s: Soldier): Arsenal {
     return s.arsenal;
@@ -376,11 +412,12 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     const menu = this.hud?.attachments;
     const wantMenu = (input.isDown('attachments') || this.forceAttachMenu) && p.active && !p.inVehicle;
     if (menu) {
-      if (wantMenu && !menu.open) menu.show(a.current, () => true);
+      const unlocked = (id: AttachmentId) => attachmentUnlocked(a.current.id, id);
+      if (wantMenu && !menu.open) menu.show(a.current, unlocked);
       if (!wantMenu && menu.open) menu.hide();
       if (menu.open) {
         const [dx, dy] = input.takeMouse();
-        const att = menu.update(dx, dy, input.pressed('fire'), () => true);
+        const att = menu.update(dx, dy, input.pressed('fire'), unlocked);
         if (att) this.setAttachments(att);
         this.attachClicked = true;
       }
@@ -487,6 +524,13 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
       this.hud?.root.classList.add('hidden');
     } else if (flags.spectate) this.spectateCamera(frameDt, alpha, vm);
+    else if (this.cameraOverride) {
+      this.cameraOverride(this.fp.camera, frameDt);
+      this.fp.camera.updateMatrixWorld();
+      this.viewmodel.visible = false;
+      this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
+      this.hud?.root.classList.add('hidden');
+    }
     this.water?.update(frameDt);
     this.projectiles.render(this, alpha);
     this.throwables.render(alpha);
@@ -497,7 +541,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.renderer.render(this.scene, this.fp.camera, this.viewmodel.scene, this.viewmodel.camera);
 
     // HUD (hidden while a debug camera is set).
-    if (this.hud && !this.debugCam && !flags.spectate) {
+    if (this.hud && !this.debugCam && !flags.spectate && !this.cameraOverride) {
       const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
       const hit = this.collision.raycast(this.fp.camera.position, aim, 1500, { ignore: p });
       const enemy = !!hit && hit.kind === 'soldier' && (hit.ref as Soldier).team !== p.team;
@@ -523,6 +567,8 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     input.endFrame();
   }
 
+  /** Cinematic camera (deploy screen, kill cam, end of round): hides the viewmodel and HUD. */
+  cameraOverride: ((cam: THREE.PerspectiveCamera, dt: number) => void) | null = null;
   private spectated: Soldier | null = null;
   private spectateT = 0;
 

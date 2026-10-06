@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Terrain } from '../../terrain';
 import { WorldBuilder } from '../../builder';
-import { MAP_SIZE, ZONE_DEFS, HQS, SEA_X, WATER_LEVEL, COMBAT_LIMIT } from './layout';
+import { MAP_SIZE, ZONE_DEFS, HQS, SEA_X, WATER_LEVEL, COMBAT_LIMIT, ROADS, ROAD_HALF_WIDTH } from './layout';
 import { terrainHeight, terrainColor, terrainSurface } from './terrainFns';
 import { buildGantry, buildMoorings, buildCorePlaza, buildSunfield, buildRidgeline, buildHq, buildRoads, buildScatter } from './districts';
 import type { MapBuild } from '../mapBuild';
@@ -36,6 +36,8 @@ export function buildBreakwater(onProgress?: (f: number, label: string) => void)
     hqs: HQS,
     rocket,
     combatLimit: COMBAT_LIMIT,
+    roads: ROADS,
+    roadWidth: ROAD_HALF_WIDTH * 2,
     skirmish: { center: ZONE_DEFS[2].center.clone(), radius: 105 },
   };
 }

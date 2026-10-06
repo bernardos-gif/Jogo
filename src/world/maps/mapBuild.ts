@@ -22,6 +22,9 @@ export interface MapBuild {
   rocket?: RocketSpec;
   /** Soldiers beyond this half-extent are out of bounds. */
   combatLimit: number;
+  /** Road polylines (x, z) and full width, for the tactical map. */
+  roads?: [number, number][][];
+  roadWidth?: number;
   /** Skirmish arena (a fenced district). */
   skirmish?: { center: THREE.Vector3; radius: number };
 }

@@ -293,7 +293,35 @@ export const TUNING = {
     spawnProtect: 1.5,
     endScreenSeconds: 12,
     killcamSeconds: 3.2,
+    /** Hold interact this long while downed to give up. */
+    giveUpHold: 1.2,
+    /** Victory / defeat banner time before the end-of-round screen. */
+    endBannerSeconds: 2.5,
+    /** Pause between a death after the downed card and the deploy screen. */
+    deathToDeploy: 1.2,
+    /** Autoplay deploys this long after the deploy screen allows it. */
+    autoDeployDelay: 0.8,
+    /** Medics within this range are named on the downed card. */
+    medicHintRange: 60,
+    /** Deploy and end-of-round overview camera: height, distance and orbit speed (rad/s). */
+    overviewCam: { height: 70, distance: 95, orbit: 0.05, lerp: 2.5 },
     score: { kill: 100, headshotBonus: 25, assist: 50, revive: 80, capture: 200, neutralize: 150, captureAssist: 100, defend: 60, spot: 10, squadSpawnUse: 10, vehicleKill: 250, destroyProp: 5 },
+  },
+
+  // ---------------------------------------------------------------------------------------------
+  // Progression (local): score to XP, levels
+  progression: {
+    xpPerScore: 1,
+    winBonus: 500,
+    completionBonus: 250,
+    /** XP to go from level n to n+1 is levelBase * levelGrowth^(n-1). */
+    levelBase: 1200,
+    levelGrowth: 1.1,
+    maxLevel: 50,
+    /** Player level that unlocks each weapon. */
+    weaponLevels: { tern: 1, wasp: 1, anvil: 1, sable: 1, sparrow: 1, hammerhead: 1, maul: 2, lumen: 3, flicker: 4, prism: 6, torrent: 8, longbow: 10 } as Record<string, number>,
+    /** Player level that unlocks attachment option 1, 2 and 3 of every slot. */
+    attachmentLevels: [1, 3, 6],
   },
 
   // ---------------------------------------------------------------------------------------------

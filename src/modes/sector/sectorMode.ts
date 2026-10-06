@@ -9,6 +9,7 @@ import { yawOf } from '../../core/math';
 import { flags } from '../../core/flags';
 import { save } from '../../core/save';
 import { killSoldier } from '../../weapons/damage';
+import { Scoring } from '../../net-sim/scoring';
 import type { Battle } from '../battle';
 import type { BattleMode } from '../mode';
 import type { Soldier } from '../../player/soldier';
@@ -19,24 +20,35 @@ const _v = new THREE.Vector3();
 
 export type RoundState = 'playing' | 'ended';
 
+function startTickets(): number {
+  return flags.tickets ?? S.tickets;
+}
+
 export class SectorMode implements BattleMode {
   readonly id = 'sector';
   zones: ZoneState[] = [];
-  readonly tickets: TicketState = { tickets: [S.tickets, S.tickets] };
+  readonly tickets: TicketState = { tickets: [startTickets(), startTickets()] };
   state: RoundState = 'playing';
   winner: Owner = -1;
   endT = 0;
   roundT = 0;
   rounds = 0;
   teamSize: number;
-  /** Player respawn is driven by the deploy screen (M6); until then the mode deploys automatically. */
+  /** Without a deploy screen (tests, dev scenes) the mode deploys the player itself. */
   autoDeployPlayer = true;
+  /** Without an end-of-round screen the mode restarts rounds itself. */
+  autoRestart = true;
   private b!: Battle;
   private off: (() => void)[] = [];
+  private scoring: Scoring | null = null;
 
-  constructor(teamSize?: number) {
-    const n = teamSize ?? flags.bots ?? save.settings.teamSize;
+  constructor(opts: { teamSize?: number; managedPlayer?: boolean } = {}) {
+    const n = opts.teamSize ?? flags.bots ?? save.settings.teamSize;
     this.teamSize = Math.max(S.teamSizeMin, Math.min(S.teamSizeMax, Math.round(n)));
+    if (opts.managedPlayer) {
+      this.autoDeployPlayer = false;
+      this.autoRestart = false;
+    }
   }
 
   setup(b: Battle): void {
@@ -46,6 +58,7 @@ export class SectorMode implements BattleMode {
     this.buildRoster();
     b.ai.buildSquads();
     b.ai.objectives = () => ({ zones: this.zones, tickets: this.tickets.tickets });
+    this.scoring = new Scoring(b.events, () => this.zones);
     this.off.push(
       b.events.on('death', (e) => {
         if (this.state !== 'playing') return;
@@ -56,6 +69,7 @@ export class SectorMode implements BattleMode {
   }
 
   dispose(): void {
+    this.scoring?.dispose();
     for (const f of this.off) f();
     this.off.length = 0;
   }
@@ -170,6 +184,10 @@ export class SectorMode implements BattleMode {
   private deployAll(): void {
     for (const s of this.b.soldiers) {
       if (s.dummy) continue;
+      if (s.isPlayer && !this.autoDeployPlayer) {
+        this.b.park(s, this.hqCenter(s.team));
+        continue;
+      }
       this.deploy(s, { kind: 'hq', key: 'hq', label: 'HQ', pos: this.hqCenter(s.team).clone() });
     }
   }
@@ -189,8 +207,8 @@ export class SectorMode implements BattleMode {
     this.state = 'playing';
     this.winner = -1;
     this.roundT = 0;
-    this.tickets.tickets[0] = S.tickets;
-    this.tickets.tickets[1] = S.tickets;
+    this.tickets.tickets[0] = startTickets();
+    this.tickets.tickets[1] = startTickets();
     for (const z of this.zones) {
       z.owner = -1;
       z.control = 0;
@@ -208,7 +226,7 @@ export class SectorMode implements BattleMode {
     const b = this.b;
     if (this.state === 'ended') {
       this.endT += dt;
-      if (this.endT > S.endScreenSeconds && (flags.autoplay || this.autoDeployPlayer)) this.restart();
+      if (this.endT > S.endScreenSeconds && this.autoRestart) this.restart();
       return;
     }
     this.roundT += dt;
@@ -237,7 +255,8 @@ export class SectorMode implements BattleMode {
       if (s.dummy) continue;
       const bot = !s.isPlayer || flags.autoplay;
       if (!s.alive) {
-        if (s.deadT > S.respawnDelay && (bot || this.autoDeployPlayer)) this.deploy(s, bot ? this.chooseBotSpawn(s) : this.options(s)[0]);
+        // The player respawns through the deploy screen unless the mode manages it.
+        if (s.deadT > S.respawnDelay && (!s.isPlayer || this.autoDeployPlayer)) this.deploy(s, bot ? this.chooseBotSpawn(s) : this.options(s)[0]);
         continue;
       }
       if (s.downed && bot && TUNING.health.downedSeconds - s.downedT > TUNING.ai.downedGiveUp && s.reviverId === -1) {

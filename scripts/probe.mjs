@@ -16,7 +16,7 @@ while (Date.now() < end) {
   await page.waitForTimeout(Number(every) * 1000);
   const s = await page.evaluate(() => window.__vf.stats());
   console.log(`t=${s.matchTime.toFixed(0)}s fps-med=${s.frameMsMedian.toFixed(0)}ms step=${s.simStepMsMedian.toFixed(1)}ms calls=${s.drawCalls} alive=${s.aliveSoldiers}/${s.soldiers} kills=${s.kills} tickets=${s.tickets.join('/')}`);
-  for (const n of s.notes.slice(1)) console.log('   ', n);
+  for (const n of s.notes) console.log('   ', n);
 }
 console.log('errors:', errors.slice(0, 10));
 await app.close();

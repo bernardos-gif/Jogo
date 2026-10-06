@@ -21,6 +21,7 @@ interface SmokeStats {
   vehiclesUsed: number;
   gadgetsUsed: number;
   stormEvents: number;
+  flowVisited: string[];
   notes: string[];
 }
 
@@ -51,13 +52,26 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
   mkdirSync(outDir, { recursive: true });
   const t0 = Date.now();
   let shot = 0;
+  // The smoke run also walks the player through death, the deploy screen and the end of round.
+  const acts = soak ? [] : [
+    { at: 0.3, name: 'killPlayer' },
+    { at: 0.72, name: 'endRound' },
+  ];
+  const act = (name: string) => page.evaluate((n) => (window as unknown as { __vf: { act(n: string): boolean } }).__vf.act(n), name);
   while (Date.now() - t0 < runSeconds * 1000) {
-    await page.waitForTimeout(Math.min(15000, runSeconds * 1000 - (Date.now() - t0) + 10));
-    if (shot < 6) await page.screenshot({ path: join(outDir, `${soak ? 'soak' : 'smoke'}-${shot++}.png`) }).catch(() => undefined);
-    const st = await page.evaluate(() => (window as unknown as { __vf: { state: string } }).__vf.state);
-    if (soak && st !== 'playing' && st !== 'deploy' && st !== 'dead') {
-      // A soak run keeps going across rounds: the autoplay flow starts a new match by itself.
+    const elapsed = (Date.now() - t0) / 1000;
+    const next = acts.find((a) => a.at * runSeconds > elapsed);
+    const until = next ? next.at * runSeconds - elapsed : Infinity;
+    await page.waitForTimeout(Math.max(10, Math.min(15000, until * 1000, runSeconds * 1000 - (Date.now() - t0) + 10)));
+    for (const a of acts) if (a.at * runSeconds <= (Date.now() - t0) / 1000 && !(a as { done?: boolean }).done) {
+      (a as { done?: boolean }).done = true;
+      // The player may be between lives; retry once a few seconds later.
+      if (!(await act(a.name))) {
+        await page.waitForTimeout(4000);
+        await act(a.name);
+      }
     }
+    if (shot < 6) await page.screenshot({ path: join(outDir, `${soak ? 'soak' : 'smoke'}-${shot++}.png`) }).catch(() => undefined);
   }
   const stats = (await page.evaluate(() => (window as unknown as { __vf: { stats(): unknown } }).__vf.stats())) as SmokeStats;
   writeFileSync(join(outDir, `${soak ? 'soak' : 'smoke'}-stats.json`), JSON.stringify({ stats, errors }, null, 2));
@@ -68,4 +82,6 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
   expect(stats.frames).toBeGreaterThan(TUNING.test.minFrames);
   expect(stats.frameMsMedian).toBeLessThan(TUNING.test.maxMedianFrameMs);
   expect(stats.matchTime).toBeGreaterThan(runSeconds * TUNING.test.minSimRealtimeRatio);
+  expect(stats.soldiers).toBeGreaterThanOrEqual(TUNING.sector.teamSizeMin * 2);
+  if (!soak) for (const f of ['playing', 'killcam', 'deploy', 'end']) expect(stats.flowVisited, `flow state ${f}`).toContain(f);
 });

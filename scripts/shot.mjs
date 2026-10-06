@@ -11,8 +11,14 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 const shots = out.split(',');
+// SHOT_ACTS="0:downPlayer,2:killPlayer" runs a test action right before shot N.
+const acts = new Map((process.env.SHOT_ACTS ?? '').split(',').filter(Boolean).map((a) => a.split(':')).map(([i, n]) => [Number(i), n]));
 for (let i = 0; i < shots.length; i++) {
-  await page.waitForTimeout(Number(wait) * 1000);
+  if (acts.has(i)) {
+    await page.waitForTimeout(Number(wait) * 500);
+    console.log('act', acts.get(i), await page.evaluate((n) => window.__vf.act(n), acts.get(i)));
+    await page.waitForTimeout(Number(wait) * 500);
+  } else await page.waitForTimeout(Number(wait) * 1000);
   await page.screenshot({ path: shots[i] });
 }
 const stats = await page.evaluate(() => window.__vf?.stats?.()).catch(() => null);

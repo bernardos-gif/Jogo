@@ -28,6 +28,8 @@ export interface WeaponContext extends CombatContext {
   horizontalSpeed(s: Soldier): number;
   /** Optional simplified resolution (far AI level of detail). Returns true when it handled the shot. */
   resolveShot?(s: Soldier, st: WeaponState['stats'], origin: THREE.Vector3, dir: THREE.Vector3): boolean;
+  /** Passive scaling of the sprint-to-fire delay. */
+  sprintToFireMul?(s: Soldier): number;
 }
 
 const _dir = new THREE.Vector3();
@@ -125,7 +127,7 @@ export class WeaponSystem {
       return;
     }
     // ---- Sprint-to-fire
-    if (s.sprinting || s.tacSprint || busyMove) a.sprintBlock = st.sprintToFire;
+    if (s.sprinting || s.tacSprint || busyMove) a.sprintBlock = st.sprintToFire * (ctx.sprintToFireMul?.(s) ?? 1);
     else a.sprintBlock = Math.max(0, a.sprintBlock - dt);
     // ---- ADS
     const canAds = !s.sprinting && !s.tacSprint && !busyMove && a.equipT <= 0 && !(w.reloading && st.category === 'launcher');

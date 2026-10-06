@@ -70,7 +70,7 @@ export class BotBrain {
   private pathAge = 0;
   private link: Link | null = null;
   private holdT = 0;
-  private arrived = false;
+  arrived = false;
   private stuckT = 0;
   private stuckCount = 0;
   private readonly stuckRef = new THREE.Vector3();

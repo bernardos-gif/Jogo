@@ -9,6 +9,9 @@ import { Squad, SQUAD_NAMES } from './squad';
 import { Rng } from '../core/rng';
 import { yawOf } from '../core/math';
 import { chestPoint } from '../weapons/hitboxes';
+import { hasPassive } from '../gadgets/state';
+import { BotGadgets } from './gadgetUse';
+import type { GadgetSystem } from '../gadgets/system';
 import type { AimProfile } from './aim';
 import type { ObjectiveView } from './utility';
 import type { Soldier } from '../player/soldier';
@@ -37,6 +40,7 @@ export interface AIHost {
   cameraPos(): THREE.Vector3;
   /** Team HQ centers (team 0, team 1). */
   hqCenter(team: TeamId): THREE.Vector3;
+  readonly gadgets: GadgetSystem;
 }
 
 export interface ObjectiveSource {
@@ -69,6 +73,7 @@ export class AIDirector implements BotWorld {
   private views: ZoneView[] = [];
   /** Stats for the debug readout. */
   pathsServed = 0;
+  private botGadgets: BotGadgets | null = null;
 
   constructor(
     readonly host: AIHost,
@@ -170,7 +175,8 @@ export class AIDirector implements BotWorld {
   }
 
   spot(by: Soldier, target: Soldier): void {
-    target.spottedUntil = this.time + A.spotting.duration;
+    const gaze = hasPassive(by, 'Long Gaze') ? TUNING.gadgets.passives.longGazeMul : 1;
+    target.spottedUntil = this.time + A.spotting.duration * gaze;
     target.spottedByTeam = by.team;
     by.stats.spots++;
     this.host.events.emit('spotted', { soldier: target, by });
@@ -282,7 +288,11 @@ export class AIDirector implements BotWorld {
       else q.b.setPath([q.to.clone()]);
       this.pathsServed++;
     }
-    for (const b of this.brains.values()) b.tick(dt, this);
+    this.botGadgets ??= new BotGadgets(this.host.gadgets, () => this.host.soldiers, this.rng);
+    for (const b of this.brains.values()) {
+      b.tick(dt, this);
+      this.botGadgets.step(b, dt);
+    }
   }
 
   private viewsFor(team: TeamId): ObjectiveView[] {

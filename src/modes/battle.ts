@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { TUNING } from '../config/tuning';
 import { Physics, initPhysics } from '../physics/physics';
-import { CollisionWorld } from '../physics/collision';
+import { CollisionWorld, makeHit } from '../physics/collision';
 import { Sky, newSkyState, sampleSky, type SkyState } from '../render/sky';
 import { Lighting } from '../render/lighting';
 import { VFX } from '../render/vfx';
@@ -38,9 +38,13 @@ import { Water } from '../world/water';
 import { Rocket } from '../world/rocket';
 import { captureTacticalMap, type TacticalImage } from '../render/tacticalMap';
 import { Pings, type PingKind } from '../net-sim/pings';
+import { GadgetSystem, type GadgetContext } from '../gadgets/system';
+import { hasPassive } from '../gadgets/state';
+import { CallIns } from '../gadgets/callins';
 import { keyLabel } from '../ui/screens/widgets';
 import type { HudWorld, HudPrompt } from '../ui/hud/types';
 import type { ScoreboardData } from '../ui/screens/scoreboard';
+import type { GadgetView } from '../ui/hud/weaponPanel';
 import { flags } from '../core/flags';
 import { AIDirector, type AIHost } from '../ai/director';
 import { raySoldier } from '../weapons/hitboxes';
@@ -58,8 +62,9 @@ import type { BodyMode } from '../art/soldierAnim';
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _right = new THREE.Vector3();
+const makeHitTmp = makeHit();
 
-export class Battle implements GameScene, WeaponContext, AIHost {
+export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
   readonly scene = new THREE.Scene();
   readonly physics: Physics;
   readonly collision = new CollisionWorld();
@@ -109,6 +114,8 @@ export class Battle implements GameScene, WeaponContext, AIHost {
   nav: PathFinder | null = null;
   readonly ai: AIDirector;
   readonly pings: Pings;
+  readonly gadgets: GadgetSystem;
+  readonly callIns: CallIns;
   tactical: TacticalImage | null = null;
   private pingHeld = -1;
   private navGeometry: THREE.BufferGeometry;
@@ -188,6 +195,8 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.collision.targets.push(new SoldierTargets(() => this.soldiers, (s) => !s.inVehicle));
     this.ai = new AIDirector(this, map.builder.covers, save.settings.difficulty);
     this.pings = new Pings(this.events);
+    this.gadgets = new GadgetSystem(this.scene);
+    this.callIns = new CallIns(this.scene);
 
     this.moveCtx = {
       physics: this.physics,
@@ -199,7 +208,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       onOutOfBounds: (s, left) => {
         if (left <= 0 && s.alive) killSoldier(this, s);
       },
-      speedMul: (s) => (s.arsenal ? s.arsenal.current.stats.moveMul : 1) * (this.map.water !== null && s.pos.y < this.map.water - 0.4 ? TUNING.movement.wadeMul : 1),
+      speedMul: (s) => (s.arsenal ? s.arsenal.current.stats.moveMul : 1) * (this.map.water !== null && s.pos.y < this.map.water - 0.4 ? TUNING.movement.wadeMul : 1) * ((s.sprinting || s.tacSprint) && hasPassive(s, 'Momentum') ? TUNING.gadgets.passives.momentumSprint : 1),
       aiming: (s) => !!s.arsenal && s.arsenal.adsK > 0.5,
     };
 
@@ -243,6 +252,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     const s = new Soldier(this.nextId++, name, team, cls, spec, primary, throwable);
     const rocketBonus = SPECIALIST_BY_ID[spec].passiveName === 'Ordnance' ? 2 : 0;
     s.arsenal = new Arsenal(primary, (id) => (team === 0 && name === 'You' ? save.data.attachments[id] : undefined) ?? defaultAttachments(id), throwable, rocketBonus);
+    this.gadgets.equip(s);
     this.soldiers.push(s);
     this.byId.set(s.id, s);
     attachBody(s, this.physics);
@@ -272,6 +282,11 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     s.pitch = 0;
     s.input.yaw = yaw;
     s.arsenal.refillAll();
+    if (s.gadget) {
+      const cd = s.gadget.cooldown;
+      this.gadgets.equip(s);
+      s.gadget.cooldown = cd;
+    }
     s.arsenal.switchTo(0);
     s.arsenal.slot = 0;
     s.arsenal.equipT = 0;
@@ -294,6 +309,9 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       return { sight: ok('sight'), barrel: ok('barrel'), underbarrel: ok('underbarrel'), ammo: ok('ammo') } as AttachmentSet;
     };
     s.arsenal = new Arsenal(primary, att, throwable, rocketBonus);
+    s.maxArmor = 0;
+    s.armor = 0;
+    this.gadgets.equip(s);
     if (s.isPlayer) this.viewWeapon = null;
   }
 
@@ -375,6 +393,9 @@ export class Battle implements GameScene, WeaponContext, AIHost {
   throwGrenade(s: Soldier, kind: ThrowableId, origin: THREE.Vector3, dir: THREE.Vector3): void {
     this.throwables.throw(s, kind, origin, dir);
   }
+  sprintToFireMul(s: Soldier): number {
+    return hasPassive(s, 'Momentum') ? TUNING.gadgets.passives.momentumSprintToFire : 1;
+  }
   horizontalSpeed(s: Soldier): number {
     return Math.hypot(s.vel.x, s.vel.z);
   }
@@ -382,10 +403,15 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     const d = this.fp.camera.position.distanceTo(pos);
     const R = TUNING.camera.explosionShakeRadius;
     if (d < R) this.fp.addTrauma(clamp((1 - d / R) * damage * TUNING.explosions.shakePerDamage, 0, 0.8));
-    if (kind !== 'emp' && damage > 0) this.destructibles.radiusDamage(pos, radius * TUNING.destruction.explosionRadiusMul, damage * TUNING.destruction.explosionDamageMul);
+    if (kind !== 'emp' && damage > 0) {
+      this.destructibles.radiusDamage(pos, radius * TUNING.destruction.explosionRadiusMul, damage * TUNING.destruction.explosionDamageMul);
+      this.gadgets.radiusDamage(pos, radius, damage, _attacker, this);
+    }
+    if (kind === 'emp') this.gadgets.emp(pos, radius, this, _attacker ? _attacker.team : -1);
   }
-  damageObject(ref: unknown, _kind: string, damage: number): boolean {
+  damageObject(ref: unknown, _kind: string, damage: number, attacker: Soldier | null = null, pos: THREE.Vector3 = _v): boolean {
     if (ref && typeof ref === 'object' && 'maxHp' in ref) return this.destructibles.damage(ref as Destructible, damage * TUNING.destruction.bulletMul);
+    if (this.gadgets.damageRef(ref, damage, attacker, this, pos)) return true;
     return false;
   }
 
@@ -402,6 +428,55 @@ export class Battle implements GameScene, WeaponContext, AIHost {
   }
   hqCenter(team: TeamId): THREE.Vector3 {
     return this.map.hqs?.find((h) => h.team === team)?.center ?? this.map.spawn;
+  }
+
+  // ---- GadgetContext -------------------------------------------------------------------------
+  groundHeight(x: number, z: number): number {
+    return this.terrain.heightAt(x, z);
+  }
+
+  /** Spot for a team; quiet spots (sensors, autopilot drones) score only for new marks. */
+  spot(by: Soldier, target: Soldier, quiet = false): void {
+    const fresh = !(target.spottedUntil > this.time && target.spottedByTeam === by.team);
+    if (quiet && !fresh) {
+      target.spottedUntil = Math.max(target.spottedUntil, this.time + TUNING.gadgets.sensor.pulse + 0.6);
+      return;
+    }
+    this.ai.spot(by, target);
+  }
+
+  /** A piloting soldier stands still; the drone takes the command. */
+  private holdForPilot(s: Soldier): void {
+    const d = this.gadgets.droneOf(s);
+    if (!d || !d.piloted) {
+      s.piloting = false;
+      return;
+    }
+    const i = s.input;
+    d.cmd.moveX = i.moveX;
+    d.cmd.moveZ = i.moveZ;
+    d.cmd.up = (i.jumpHeld ? 1 : 0) - (i.sprint ? 1 : 0);
+    d.cmd.yaw = i.yaw;
+    d.cmd.pitch = i.pitch;
+    if (i.firePressed) {
+      // Spot whatever is under the drone's reticle.
+      const dir = viewDir(d.yaw, d.pitch, _v2);
+      const hit = this.collision.raycast(d.pos, dir, TUNING.gadgets.drone.spotRange * 1.5, { ignore: d }, makeHitTmp);
+      if (hit && hit.kind === 'soldier' && (hit.ref as Soldier).team !== s.team) {
+        const t = hit.ref as Soldier;
+        this.ai.spot(s, t);
+        this.events.emit('ping', { soldier: s, pos: t.pos.clone(), kind: 'enemy', follow: t });
+      } else if (hit) this.events.emit('ping', { soldier: s, pos: hit.point.clone(), kind: 'location' });
+    }
+    i.moveX = 0;
+    i.moveZ = 0;
+    i.jump = false;
+    i.fire = false;
+    i.firePressed = false;
+    i.aim = false;
+    i.sprint = false;
+    i.yaw = s.yaw;
+    i.pitch = s.pitch;
   }
 
   /** Far bots shooting far bots: analytic hit test against the target's hitboxes, no projectile. */
@@ -425,6 +500,9 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.destructibles.reset();
     this.vfx.clear();
     this.pings.clear();
+    this.gadgets.clear(this);
+    this.callIns.clear();
+    for (const s of this.soldiers) s.piloting = false;
     this.hud?.clearTransient();
   }
 
@@ -494,13 +572,15 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       if (!p.alive && this.hud.fullMap?.open) this.hud.fullMap.show(false);
     }
     this.handlePing(p);
+    this.handleTablet(p);
     const zoom = 1 + (a.current.stats.zoom - 1) * a.adsK;
     if (this.ai.brain(p)) {
       // Autoplay: the player's brain writes the command; the camera follows its aim.
       input.takeMouse();
       this.controller.setAim(p.yaw, p.pitch);
     } else this.controller.frame(p, a.adsK, zoom);
-    if (menu?.open || this.hud?.comms.open) {
+    if (menu?.open || this.hud?.comms.open || this.hud?.tablet.open) {
+      p.input.slot = -1;
       p.input.fire = false;
       p.input.firePressed = false;
       p.input.aim = false;
@@ -535,6 +615,40 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     }
   }
 
+  /** Hold B: the call-in tablet; the drop goes to the crosshair point (or beside the player). */
+  private handleTablet(p: Soldier): void {
+    const tab = this.hud?.tablet;
+    if (!tab) return;
+    const C = TUNING.callins;
+    if (!p.active || p.inVehicle || p.piloting) {
+      if (tab.open) tab.hide();
+      return;
+    }
+    if (!tab.open && input.heldFor('tablet') >= C.holdToOpen && input.isDown('tablet')) tab.show();
+    if (!tab.open) return;
+    const [dx] = input.takeMouse();
+    const key = input.pressed('weapon1') ? 0 : input.pressed('weapon2') ? 1 : -1;
+    const at = this.dropPoint(p, _v);
+    const kind = tab.update(dx, key, this.callIns.cooldowns[p.team], at.inRange);
+    const confirm = input.pressed('fire') || !input.isDown('tablet');
+    if (!confirm) return;
+    tab.hide();
+    if (kind && this.callIns.request(p, kind, at.point, at.point.y)) {
+      this.events.emit('announce', { text: `${kind === 'wisp' ? 'Wisp' : 'Basalt'} inbound`, sub: 'Airdrop requested', tone: 'info' });
+      this.events.emit('ping', { soldier: p, pos: at.point.clone(), kind: 'vehicle' });
+    }
+  }
+
+  /** Ground point under the crosshair for a call-in (beside the player when out of range). */
+  dropPoint(p: Soldier, out: THREE.Vector3): { point: THREE.Vector3; inRange: boolean } {
+    const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
+    const hit = this.collision.raycast(this.fp.camera.position, aim, TUNING.callins.maxRange, { worldOnly: true, ignore: p }, makeHitTmp);
+    if (hit && hit.normal.y > 0.6) return { point: out.copy(hit.point), inRange: true };
+    out.set(p.pos.x - Math.sin(p.yaw) * 8, 0, p.pos.z - Math.cos(p.yaw) * 8);
+    out.y = this.terrain.heightAt(out.x, out.z);
+    return { point: out, inRange: false };
+  }
+
   /** Publishes a ping from the player: at the crosshair (or on the player for requests). */
   private sendPing(p: Soldier, kind: PingKind | null, atAim: boolean): void {
     const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
@@ -551,6 +665,17 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       return;
     }
     this.events.emit('ping', { soldier: p, pos: hit.point.clone(), kind: kind ?? 'location' });
+  }
+
+  /** HUD chip for the player's gadget. */
+  private gadgetView(p: Soldier): GadgetView | null {
+    const g = p.gadget;
+    if (!g) return null;
+    const name = SPECIALIST_BY_ID[p.specialist].gadgetName;
+    if (g.id === 'arctool') return { name, ready: !g.overheated && g.disabledT <= 0, cooldown: g.heat, charges: 1 };
+    const active = g.deployed > 0;
+    const ready = g.cooldown <= 0 && g.charges > 0 && g.disabledT <= 0 && (!active || g.id === 'drone');
+    return { name: active ? `${name} · active` : name, ready, cooldown: g.disabledT > 0 ? 1 : g.cooldown / Math.max(0.01, g.cooldownMax), charges: g.charges };
   }
 
   /** Everything the HUD reads this frame. */
@@ -581,7 +706,15 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       frags: this.throwables.near(p.pos, TUNING.ui.grenadeIndicatorRange),
       prompt: this.interactPrompt(p),
       hazards: this.hazards,
+      drone: this.droneReadout(p),
     };
+  }
+
+  private droneReadout(p: Soldier): HudWorld['drone'] {
+    const d = p.piloting ? this.gadgets.droneOf(p) : null;
+    if (!d) return null;
+    const D = TUNING.gadgets.drone;
+    return { battery: d.battery / D.battery, altitude: d.pos.y - this.terrain.heightAt(d.pos.x, d.pos.z), hp: d.hp / D.hp };
   }
 
   /** Hazard zones shown on the maps (dynamic events add them). */
@@ -622,13 +755,17 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.moveCtx.time = this.time;
     this.interactives.update(dt);
     this.ai.update(dt);
+    for (const s of this.soldiers) this.gadgets.stepSoldier(s, dt, this);
     for (const s of this.soldiers) {
       if (s.dummy && !s.alive) continue;
+      if (s.piloting) this.holdForPilot(s);
       stepMovement(s, dt, this.moveCtx);
     }
     for (const s of this.soldiers) this.weaponSystem.step(s, dt, this);
     this.projectiles.step(dt, this);
     this.throwables.step(dt, this);
+    this.gadgets.step(dt, this);
+    this.callIns.step(dt, this.vfx);
     for (const s of this.soldiers) {
       stepHealth(this, s, dt);
       s.empT = Math.max(0, s.empT - dt);
@@ -655,7 +792,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.fp.headBob = save.settings.headBob;
     this.fp.update(frameDt, eye, this.controller.yaw, this.controller.pitch, speed, p.grounded && p.state === 'ground', p.landKick, save.settings.fov, zoom, extraFov * (1 - a.adsK), this.renderer.aspect);
 
-    for (const s of this.soldiers) if (!s.isPlayer && (s.alive || s.deadT < 8)) this.drawSoldier(s, alpha, frameDt);
+    for (const s of this.soldiers) if ((!s.isPlayer || flags.tp) && (s.alive || s.deadT < 8)) this.drawSoldier(s, alpha, frameDt);
     this.crowd.flush();
     this.weaponCrowd.flush();
 
@@ -697,7 +834,16 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       this.viewmodel.visible = false;
       this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
       this.hud?.root.classList.add('hidden');
-    } else if (flags.spectate) this.spectateCamera(frameDt, alpha, vm);
+    } else if (p.piloting && this.gadgets.droneOf(p)) {
+      // Drone view: the camera rides the drone; the body stays behind.
+      const d = this.gadgets.droneOf(p)!;
+      const cam = this.fp.camera;
+      cam.position.copy(d.prev).lerp(d.pos, alpha);
+      cam.rotation.set(this.controller.pitch, this.controller.yaw, 0, 'YXZ');
+      cam.updateMatrixWorld();
+      this.viewmodel.visible = false;
+      this.viewmodel.update(frameDt, cam, vm, this.renderer.aspect);
+    } else if (flags.spectate || flags.tp) this.spectateCamera(frameDt, alpha, vm);
     else if (this.cameraOverride) {
       this.cameraOverride(this.fp.camera, frameDt);
       this.fp.camera.updateMatrixWorld();
@@ -706,6 +852,8 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       this.hud?.root.classList.add('hidden');
     }
     this.water?.update(frameDt);
+    this.gadgets.render(frameDt, alpha, this);
+    this.callIns.render(alpha);
     this.projectiles.render(this, alpha);
     this.throwables.render(alpha);
     this.vfx.update(frameDt);
@@ -715,7 +863,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.renderer.render(this.scene, this.fp.camera, this.viewmodel.scene, this.viewmodel.camera);
 
     // HUD (hidden while a debug camera is set).
-    if (this.hud && !this.debugCam && !flags.spectate && !this.cameraOverride) {
+    if (this.hud && !this.debugCam && !flags.spectate && !flags.tp && !this.cameraOverride) {
       const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
       const hit = this.collision.raycast(this.fp.camera.position, aim, 1500, { ignore: p });
       const enemy = !!hit && hit.kind === 'soldier' && (hit.ref as Soldier).team !== p.team;
@@ -730,7 +878,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
         zoom: w.stats.zoom,
         rangeM: hit ? hit.dist : null,
         enemyUnderCrosshair: enemy,
-        gadget: null,
+        gadget: this.gadgetView(p),
         time: this.swayT,
       }, this.hudWorld());
     }
@@ -766,6 +914,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
   /** Debug spectator: over-the-shoulder view of a bot in a firefight (switches every few seconds). */
   private spectateCamera(frameDt: number, alpha: number, vm: ViewmodelState): void {
     this.spectateT += frameDt;
+    if (flags.tp) this.spectated = this.player;
     const cur = this.spectated;
     if (!cur || !cur.alive || this.spectateT > 14) {
       let pick: Soldier | null = null;

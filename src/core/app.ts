@@ -371,8 +371,8 @@ export class App {
       aliveSoldiers: this.battle?.soldiers.filter((s) => s.alive).length ?? 0,
       kills: this.battle ? this.battle.soldiers.reduce((n, s) => n + s.stats.kills, 0) : 0,
       tickets: this.battle?.mode instanceof SectorMode ? [Math.round(this.battle.mode.tickets.tickets[0]), Math.round(this.battle.mode.tickets.tickets[1])] : [0, 0],
-      vehiclesUsed: 0,
-      gadgetsUsed: 0,
+      vehiclesUsed: this.battle?.callIns.requests ?? 0,
+      gadgetsUsed: this.battle?.gadgets.uses ?? 0,
       stormEvents: 0,
       flowVisited: [...this.flowVisited],
       notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : ''] : [],
@@ -393,6 +393,16 @@ export class App {
     }
     if (name === 'endRound' && b.mode instanceof SectorMode) {
       b.mode.tickets.tickets[1] = 0;
+      return true;
+    }
+    if (name === 'callin') {
+      if (!p.alive) return false;
+      const at = b.dropPoint(p, p.pos.clone());
+      return b.callIns.request(p, 'wisp', at.point, at.point.y);
+    }
+    if (name === 'showcase') {
+      if (!p.alive) return false;
+      b.gadgets.showcase(p, b);
       return true;
     }
     // UI exercise for automated runs: open and close overlays and menu screens.

@@ -7,6 +7,7 @@ import { SoldierAnimator, type BodyMode } from '../art/soldierAnim';
 import type { ClassId, SpecialistId, TeamId, ThrowableId, WeaponId } from '../config/content';
 import type { Ladder, Zipline, Elevator } from '../world/interactives';
 import type { Arsenal } from '../weapons/arsenal';
+import type { GadgetState } from '../gadgets/state';
 
 export interface SoldierInput {
   /** Strafe (+right) and forward (+forward), each -1..1. */
@@ -192,6 +193,10 @@ export class Soldier {
 
   /** Weapons, throwables and melee state (assigned when the soldier joins a battle). */
   arsenal!: Arsenal;
+  /** Specialist gadget (assigned with the loadout). */
+  gadget: GadgetState | null = null;
+  /** True while this soldier pilots a scout drone (the body stays crouched in place). */
+  piloting = false;
   /** Training dummies stand still and never act. */
   dummy = false;
 

@@ -71,3 +71,13 @@ One line per choice. Newest entries are appended at the end of each section.
 - Saved attachments that are still locked fall back to the weapon's defaults when you deploy.
 - Tap Q pings what is under the crosshair (an enemy gets spotted and the ping follows it); hold Q opens the comms rose (attack, enemy, defend, vehicle, need ammo, need medic, go here).
 - The performance readout (fps, frame and sim times, draw calls, render scale) is off by default and lives under Settings → Interface.
+
+## Specialists and gadgets
+
+- Every soldier carries the gadget of their specialist on the gadget key (4); the Mender fires on release and self-heals on a hold, the Arc Tool works while held and overheats.
+- Bulwark walls stop bullets from both sides and block movement, so they work as real cover for either team; they last 22 s or until shot down.
+- Mender darts revive a downed ally they hit (the support class's revive tool at range).
+- Supply caches hand out an armor plate to anyone who stands at them, which is how soldiers other than Okonjo get armor.
+- Bots fly their Kestrel on autopilot in an orbit over their squad's objective; the player pilots it from the drone's own camera (Space / Shift climb and dive, fire to spot).
+- The call-in tablet offers the two ground vehicles (Wisp and Basalt); aircraft spawn on the HQ pads instead of being airdropped.
+

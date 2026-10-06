@@ -262,6 +262,48 @@ export const TUNING = {
   // Gadgets (expanded in M8)
   gadgets: {
     grapple: { range: 45, pullSpeed: 21, cooldown: 9 },
+    /** Bulwark: deployable hex-cell wall. */
+    shield: { width: 2.6, height: 2.1, distance: 1.6, hp: 650, life: 22, cooldown: 30, intensity: 0.42 },
+    /** Watchdog sentry turret. */
+    sentry: { range: 46, arc: 2.2, turnSpeed: 2.6, damage: [13, 8] as [number, number], rpm: 420, burst: 6, burstPause: 0.7, velocity: 600, spread: 1.6, hp: 160, life: 45, cooldown: 38, placeRange: 6, reaction: 0.5 },
+    /** Arc Tool: repair / EMP beam. */
+    arctool: { range: 9, repairPerSecond: 120, empPerSecond: 70, gadgetDamagePerSecond: 90, heatPerSecond: 0.18, coolPerSecond: 0.3, disable: 4 },
+    /** Mender dart launcher. */
+    mender: { charges: 3, recharge: 8, heal: 45, splashHeal: 20, splashRadius: 3, velocity: 70, selfHold: 0.55, selfHeal: 40, fireCooldown: 0.6 },
+    /** Supply Cache. */
+    cache: { radius: 4.5, life: 60, cooldown: 45, magEvery: 2, throwableEvery: 6, armorPerSecond: 8, plate: 20 },
+    /** Kestrel scout drone. */
+    drone: { speed: 14, climb: 7, battery: 25, hp: 45, cooldown: 30, spotRange: 90, spotCone: 0.35, maxAltitude: 120, botRadius: 55 },
+    /** Echo motion sensor. */
+    sensor: { radius: 26, life: 30, cooldown: 30, moveSpeed: 1.6, pulse: 1.5, throwSpeed: 16 },
+    /** Passives. */
+    passives: {
+      momentumSprint: 1.08,
+      momentumSprintToFire: 0.65,
+      platedArmor: 20,
+      platedRegenDelay: 6,
+      platedRegenRate: 6,
+      stockpileRadius: 20,
+      stockpileBoost: 3,
+      longGazeMul: 2,
+    },
+    /** Who can be disabled by EMP / Arc Tool and for how long. */
+    empDisable: 6,
+  },
+
+  // ---------------------------------------------------------------------------------------------
+  // Call-in tablet: vehicle airdrops with per-team cooldowns
+  callins: {
+    holdToOpen: 0.15,
+    maxRange: 160,
+    dropHeight: 140,
+    fallSpeed: 22,
+    chuteSpeed: 9,
+    chuteAltitude: 45,
+    /** Per-team cooldown (seconds) per call-in kind. */
+    cooldowns: { wisp: 75, basalt: 170 } as Record<string, number>,
+    /** Bots request a drop when their team has none of that kind alive. */
+    botChance: 0.35,
   },
 
   // ---------------------------------------------------------------------------------------------
@@ -305,7 +347,7 @@ export const TUNING = {
     medicHintRange: 60,
     /** Deploy and end-of-round overview camera: height, distance and orbit speed (rad/s). */
     overviewCam: { height: 70, distance: 95, orbit: 0.05, lerp: 2.5 },
-    score: { kill: 100, headshotBonus: 25, assist: 50, revive: 80, capture: 200, neutralize: 150, captureAssist: 100, defend: 60, spot: 10, squadSpawnUse: 10, vehicleKill: 250, destroyProp: 5 },
+    score: { kill: 100, headshotBonus: 25, assist: 50, revive: 80, capture: 200, neutralize: 150, captureAssist: 100, defend: 60, spot: 10, squadSpawnUse: 10, vehicleKill: 250, destroyProp: 5, resupply: 10, healPerPoint: 0.5, repairPerPoint: 0.1, gadgetDestroy: 50 },
   },
 
   // ---------------------------------------------------------------------------------------------
@@ -518,6 +560,8 @@ export const TUNING = {
       burstModeMul: 1.6,
       flankArrive: 15,
     },
+    /** Bot gadget decisions. */
+    gadgets: { interval: 0.6, healRange: 35, healBelow: 70, selfHealBelow: 55, shieldSuppression: 0.35, cacheRadius: 12, droneRange: 140, sensorMin: 12, sensorMax: 45, grappleRise: 5 },
     /** Bot roster: class mix and per-class weapon and throwable pools. */
     loadout: {
       classWeights: { assault: 0.34, engineer: 0.22, support: 0.24, recon: 0.2 },

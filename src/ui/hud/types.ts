@@ -38,4 +38,6 @@ export interface HudWorld {
   frags: readonly { pos: THREE.Vector3 }[];
   prompt: HudPrompt | null;
   hazards: readonly { x: number; z: number; r: number; label: string }[];
+  /** Piloted drone readout (battery fraction, altitude above ground, hp fraction). */
+  drone: { battery: number; altitude: number; hp: number } | null;
 }

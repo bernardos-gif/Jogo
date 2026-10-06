@@ -16,6 +16,7 @@ import { Banners } from './banners';
 import { DamageArcs, GrenadeWarnings, CaptureRing, Prompt, AmmoCue } from './indicators';
 import { WorldMarkers } from './markers';
 import { CommsRose } from './comms';
+import { Tablet } from './tablet';
 import { Scoreboard, type ScoreboardData } from '../screens/scoreboard';
 import { FullMap } from '../screens/fullmap';
 import type { HudWorld } from './types';
@@ -57,6 +58,7 @@ export class Hud {
   readonly ammoCue: AmmoCue;
   readonly markers: WorldMarkers;
   readonly comms: CommsRose;
+  readonly tablet: Tablet;
   scoreboard: Scoreboard;
   fullMap: FullMap | null = null;
   /** Seconds left of the heavy-damage glitch. */
@@ -67,6 +69,9 @@ export class Hud {
   private readoutRows = new Map<string, HTMLElement>();
   private unsub: (() => void)[] = [];
   private overlays: HTMLDivElement;
+  private droneEl: HTMLDivElement;
+  private droneBat: HTMLElement;
+  private droneAlt: HTMLDivElement;
 
   constructor(parent: HTMLElement, events: EventBus, private player: () => Soldier) {
     this.root = h('div', { class: 'hud hidden' });
@@ -87,6 +92,16 @@ export class Hud {
     this.banners = new Banners(this.root);
     this.attachments = new AttachmentMenu(this.root);
     this.comms = new CommsRose(this.root);
+    this.tablet = new Tablet(this.root);
+    this.droneBat = h('i');
+    this.droneAlt = h('div', { class: 'num dr-alt' });
+    this.droneEl = h(
+      'div',
+      { class: 'drone-hud hidden' },
+      h('div', { class: 'dr-reticle' }),
+      h('div', { class: 'dr-panel panel brackets' }, h('div', { class: 'display', text: 'Kestrel' }), h('div', { class: 'label', text: 'Battery' }), h('div', { class: 'bar seg' }, this.droneBat), this.droneAlt, h('div', { class: 'label dr-hint', text: 'Fire: spot · Space / Shift: climb / dive · Gadget: return' })),
+    );
+    this.root.appendChild(this.droneEl);
     // Overlays live outside the HUD root so they stay visible when the HUD hides.
     this.overlays = h('div', { class: 'hud-overlays' });
     parent.appendChild(this.overlays);
@@ -169,9 +184,16 @@ export class Hud {
     this.root.classList.toggle('hidden', !visible);
     if (!visible) return;
     toggle(this.root, 'downed', p.downed);
+    const dr = w?.drone ?? null;
+    toggle(this.root, 'piloting', !!dr);
+    toggle(this.droneEl, 'hidden', !dr);
+    if (dr) {
+      this.droneBat.style.width = `${(dr.battery * 100).toFixed(0)}%`;
+      setText(this.droneAlt, `ALT ${Math.round(dr.altitude)} m · HULL ${Math.round(dr.hp * 100)}%`);
+    }
     const wpn = f.arsenal.current;
     this.scope.update(f.scoped, wpn.att.sight, f.zoom, f.rangeM, f.time);
-    this.crosshair.update(f.dt, f.spread, f.vfov, f.screenH, wpn.stats.category, f.arsenal.adsK, !f.scoped && !this.attachments.open && !this.comms.open && p.active, f.enemyUnderCrosshair);
+    this.crosshair.update(f.dt, f.spread, f.vfov, f.screenH, wpn.stats.category, f.arsenal.adsK, !f.scoped && !this.attachments.open && !this.comms.open && !this.tablet.open && p.active, f.enemyUnderCrosshair);
     this.weapon.update(p, f.arsenal, f.gadget);
     this.arcs.update(f.dt, p);
     this.ammoCue.update(p, f.arsenal);

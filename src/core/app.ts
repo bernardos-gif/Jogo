@@ -1,19 +1,22 @@
-// Application shell (M0): renderer, UI root, boot splash, fixed-step loop and test hooks.
-import * as THREE from 'three';
+// Application shell: renderer, UI root, boot splash, fixed-step loop, scenes and test hooks.
 import { TUNING } from '../config/tuning';
 import { flags } from './flags';
 import { RollingStat } from './stats';
 import { installTestHooks, type TestStats } from './testHooks';
 import { BootSplash } from '../ui/screens/splash';
 import { h } from '../ui/dom';
+import { Renderer } from '../render/renderer';
+import type { GameScene } from '../scenes/gameScene';
+import { StyleScene } from '../scenes/styleScene';
 
 export type AppState = 'boot' | 'menu' | 'deploy' | 'playing' | 'paused' | 'dead' | 'end';
 
 export class App {
   readonly canvas: HTMLCanvasElement;
   readonly ui: HTMLDivElement;
-  readonly renderer: THREE.WebGLRenderer;
+  readonly renderer: Renderer;
   state: AppState = 'boot';
+  scene: GameScene | null = null;
   private frameMs = new RollingStat(TUNING.test.statsWindow);
   private stepMs = new RollingStat(TUNING.test.statsWindow);
   private frames = 0;
@@ -26,11 +29,9 @@ export class App {
     root.appendChild(this.canvas);
     this.ui = h('div', { id: 'ui' });
     root.appendChild(this.ui);
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setClearColor(0x05080d);
-    window.addEventListener('resize', () => this.resize());
-    this.resize();
+    this.renderer = new Renderer(this.canvas);
+    this.renderer.applyPreset(flags.preset ?? (flags.smoke || flags.soak ? 'low' : 'high'));
+    window.addEventListener('resize', () => this.scene?.resize(this.renderer.aspect));
     installTestHooks(this);
   }
 
@@ -38,16 +39,24 @@ export class App {
     const splash = new BootSplash(this.ui);
     splash.progress(0.1, 'Initializing renderer');
     await new Promise((r) => setTimeout(r, TUNING.ui.bootSplashMin * 1000));
+    if (flags.scene === 'style') {
+      splash.progress(0.6, 'Building style test scene');
+      await new Promise((r) => setTimeout(r, 0));
+      this.scene = new StyleScene(this.renderer);
+    }
     splash.progress(1, 'Ready');
     await splash.hide();
-    this.state = flags.autoplay ? 'playing' : 'menu';
+    this.state = flags.autoplay || this.scene ? 'playing' : 'menu';
+    this.last = performance.now();
     requestAnimationFrame(this.tick);
   }
 
   private tick = (now: number): void => {
     requestAnimationFrame(this.tick);
-    const dt = Math.min(TUNING.loop.maxFrameSeconds, (now - this.last) / 1000);
-    this.frameMs.push(now - this.last);
+    const frameMs = now - this.last;
+    const dt = Math.min(TUNING.loop.maxFrameSeconds, frameMs / 1000);
+    this.frameMs.push(frameMs);
+    this.renderer.trackFrame(frameMs, now / 1000);
     this.last = now;
     this.frames++;
     const step = 1 / TUNING.loop.hz;
@@ -56,18 +65,15 @@ export class App {
     while (this.acc >= step && steps < TUNING.loop.maxStepsPerFrame) {
       const t0 = performance.now();
       if (this.state === 'playing') this.matchTime += step;
+      this.scene?.update(step);
       this.stepMs.push(performance.now() - t0);
       this.acc -= step;
       steps++;
     }
     if (steps >= TUNING.loop.maxStepsPerFrame) this.acc = 0;
-    this.renderer.render(new THREE.Scene(), new THREE.PerspectiveCamera());
+    if (this.scene) this.scene.render(this.acc / step);
+    else this.renderer.gl.clear();
   };
-
-  private resize(): void {
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-  }
 
   testStats(): TestStats {
     return {
@@ -77,7 +83,7 @@ export class App {
       frameMsMedian: this.frameMs.percentile(0.5),
       frameMsP95: this.frameMs.percentile(0.95),
       simStepMsMedian: this.stepMs.percentile(0.5),
-      drawCalls: this.renderer.info.render.calls,
+      drawCalls: this.renderer.drawCalls,
       soldiers: 0,
       aliveSoldiers: 0,
       kills: 0,

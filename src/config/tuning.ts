@@ -12,6 +12,20 @@ export const TUNING = {
   },
 
   // ---------------------------------------------------------------------------------------------
+  // Rendering budgets that behave like gameplay timings
+  render: {
+    dynamicResolution: {
+      targetMs: 1000 / 60,
+      downThreshold: 1.1,
+      upThreshold: 0.78,
+      step: 0.1,
+      minScale: 0.6,
+      cooldown: 1.5,
+      smoothing: 0.05,
+    },
+  },
+
+  // ---------------------------------------------------------------------------------------------
   // Automated tests (smoke and soak)
   test: {
     smokeSeconds: 90,

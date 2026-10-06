@@ -125,6 +125,7 @@ class ComboMesh {
     });
     outlineMat.uniforms.boneTex = uniform;
     this.outline = new THREE.InstancedMesh(geo.toon, outlineMat, cap);
+    this.outline.name = 'outline';
 
     const glow = glowMaterial(GLOW_RIG);
     patchSkinned(glow, uniform, key + '-glow', false);

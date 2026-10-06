@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { TUNING } from '../../config/tuning';
 import { BOT_NAMES, SPECIALISTS, WEAPON_BY_ID, type ClassId, type TeamId, type ThrowableId, type WeaponId } from '../../config/content';
-import { newZone, stepZone, stepTickets, onDeath, inZone, type ZoneState, type TicketState, type Owner } from './logic';
+import { newZone, stepZone, stepTickets, onDeath, inZone, bleedRates, type ZoneState, type TicketState, type Owner } from './logic';
 import { spawnOptions, type SpawnOption } from './spawns';
 import { yawOf } from '../../core/math';
 import { flags } from '../../core/flags';
@@ -11,7 +11,7 @@ import { save } from '../../core/save';
 import { killSoldier } from '../../weapons/damage';
 import { Scoring } from '../../net-sim/scoring';
 import type { Battle } from '../battle';
-import type { BattleMode } from '../mode';
+import type { BattleMode, ModeHudInfo } from '../mode';
 import type { Soldier } from '../../player/soldier';
 import type { AttachmentSet } from '../../art/weaponModels';
 
@@ -54,7 +54,7 @@ export class SectorMode implements BattleMode {
   setup(b: Battle): void {
     this.b = b;
     const defs = b.map.zones ?? [];
-    this.zones = defs.map((d) => newZone(d.id, d.center.x, d.center.z, d.radius));
+    this.zones = defs.map((d) => newZone(d.id, d.center.x, d.center.z, d.radius, -1, b.terrain.heightAt(d.center.x, d.center.z)));
     this.buildRoster();
     b.ai.buildSquads();
     b.ai.objectives = () => ({ zones: this.zones, tickets: this.tickets.tickets });
@@ -190,6 +190,14 @@ export class SectorMode implements BattleMode {
       }
       this.deploy(s, { kind: 'hq', key: 'hq', label: 'HQ', pos: this.hqCenter(s.team).clone() });
     }
+  }
+
+  hudInfo(): ModeHudInfo {
+    return { modeName: 'Sector Control', zones: this.zones, tickets: this.tickets.tickets, ticketMax: startTickets(), bleed: bleedRates(this.zones), kills: null, killTarget: 0, roundT: this.roundT, timeLeft: null };
+  }
+
+  squadName(id: number): string {
+    return this.b.ai.squads[id]?.name ?? '';
   }
 
   // ---- Round flow ------------------------------------------------------------------------------

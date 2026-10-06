@@ -65,3 +65,9 @@ One line per choice. Newest entries are appended at the end of each section.
 
 - Fonts: Rajdhani (display), Inter (body), JetBrains Mono (tabular numerals).
 - HUD team colors are relative to the player (cyan friend, red foe, green squad); factions keep their own 3D colors.
+- The main menu runs over the live battle: bots keep fighting behind the menu while a spline camera flies over the districts; Play restarts the round (a new roster when the team size changed).
+- Pause halts the simulation (the battle is single-player with bots).
+- The loadout screen renders its weapon preview with a second, small WebGL renderer so the menu works without touching the battle renderer.
+- Saved attachments that are still locked fall back to the weapon's defaults when you deploy.
+- Tap Q pings what is under the crosshair (an enemy gets spotted and the ping follows it); hold Q opens the comms rose (attack, enemy, defend, vehicle, need ammo, need medic, go here).
+- The performance readout (fps, frame and sim times, draw calls, render scale) is off by default and lives under Settings → Interface.

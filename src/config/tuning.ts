@@ -469,6 +469,7 @@ export const TUNING = {
       cooldown: 6,
       duration: 6,
       pingChance: 0.25,
+      medicCallChance: 0.5,
     },
     /** Soldier-brain heuristics. */
     brain: {
@@ -594,6 +595,14 @@ export const TUNING = {
     minimapRadius: 120,
     minimapZoomedRadius: 60,
     compassFov: 140,
+    pings: { requestLife: 15, maxPerOwner: 2, maxRange: 600 },
+    /** Damage in one hit that triggers the chromatic glitch. */
+    glitchDamage: 32,
+    bannerQueue: 4,
+    /** Main menu flyover: camera height and outward offset, look height, loop time, look-ahead fraction. */
+    flyover: { height: 46, offset: 70, lookHeight: 8, loopSeconds: 240, lookAhead: 0.035 },
+    objectiveFadeInside: 0.35,
+    downedMarkerRange: 80,
     nameplateRange: 60,
     squadNameplateRange: 400,
     spottedMarkerRange: 300,

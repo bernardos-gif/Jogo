@@ -93,6 +93,22 @@ export class MatchFlow {
     this.toDeploy();
   }
 
+  /** Leaves the match flow (main menu): hides every flow screen and parks the player. */
+  stop(): void {
+    this.state = 'deploy';
+    this.deploy.hide();
+    this.killCard.hide();
+    this.endScreen.hide();
+    this.kill = null;
+    this.killer = null;
+    this.b.park(this.b.player, this.mode.hqCenter(this.b.player.team));
+  }
+
+  /** Points the flow at a new mode instance (team size change). */
+  setMode(mode: SectorMode): void {
+    this.mode = mode;
+  }
+
   private recordKill(killer: Soldier | null, weapon: string, distance: number, headshot: boolean): void {
     this.killer = killer;
     this.deathPos.copy(this.b.player.pos);

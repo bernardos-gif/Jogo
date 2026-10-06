@@ -76,6 +76,7 @@ export class Destructibles {
       body.castShadow = true;
       body.receiveShadow = true;
       const outline = new THREE.InstancedMesh(toon, MATS.outline, n);
+      outline.name = 'outline';
       const glowMesh = glow ? new THREE.InstancedMesh(glow, MATS.lamp, n) : null;
       for (const m of [body, outline, glowMesh]) if (m) scene.add(m);
       this.kinds.set(kind, { body, outline, glow: glowMesh });

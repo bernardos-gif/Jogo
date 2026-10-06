@@ -25,7 +25,7 @@ export interface GameEvents {
   capture: { zone: ZoneId; team: TeamId; neutralized: boolean };
   contest: { zone: ZoneId };
   announce: { text: string; sub?: string; tone: 'info' | 'good' | 'bad' | 'warn' };
-  ping: { soldier: Soldier; pos: THREE.Vector3; kind: string };
+  ping: { soldier: Soldier; pos: THREE.Vector3; kind: string; follow?: Soldier | null };
   spotted: { soldier: Soldier; by: Soldier };
   destruct: { pos: THREE.Vector3; kind: string };
   vehicleDestroyed: { pos: THREE.Vector3; kind: string; killer: Soldier | null };

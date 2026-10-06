@@ -88,6 +88,10 @@ export class AIDirector implements BotWorld {
       const b = this.brains.get(e.victim.id);
       if (b && e.attacker && e.attacker.team !== e.victim.team) b.onThreat(e.attacker, A.suppression.perHit, this);
     });
+    host.events.on('downed', (e) => {
+      // Downed bots call for a medic now and then (the ping follows them).
+      if (!e.victim.isPlayer && this.rng.next() < A.spotting.medicCallChance) this.ping(e.victim, e.victim.pos, 'medic', e.victim);
+    });
     host.events.on('death', (e) => {
       const b = this.brains.get(e.victim.id);
       if (b) b.reset(this);
@@ -172,8 +176,8 @@ export class AIDirector implements BotWorld {
     this.host.events.emit('spotted', { soldier: target, by });
   }
 
-  ping(by: Soldier, pos: THREE.Vector3, kind: string): void {
-    this.host.events.emit('ping', { soldier: by, pos: pos.clone(), kind });
+  ping(by: Soldier, pos: THREE.Vector3, kind: string, follow: Soldier | null = null): void {
+    this.host.events.emit('ping', { soldier: by, pos: pos.clone(), kind, follow });
   }
 
   threatBearing(team: number, from: THREE.Vector3): number {

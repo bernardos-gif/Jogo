@@ -17,7 +17,7 @@ import { save } from '../core/save';
 import { EventBus } from '../core/events';
 import { clamp, damp, viewDir } from '../core/math';
 import { Soldier, clearEdges } from '../player/soldier';
-import { attachBody, stepMovement, teleport, setStance, type MovementContext } from '../player/movement';
+import { attachBody, detachBody, stepMovement, teleport, setStance, type MovementContext } from '../player/movement';
 import { FpCamera, verticalFov } from '../player/fpCamera';
 import { Viewmodel, newViewmodelState, type ViewmodelState } from '../player/viewmodel';
 import { PlayerController } from '../player/playerController';
@@ -37,6 +37,10 @@ import { Destructibles, type Destructible } from '../world/destruction';
 import { Water } from '../world/water';
 import { Rocket } from '../world/rocket';
 import { captureTacticalMap, type TacticalImage } from '../render/tacticalMap';
+import { Pings, type PingKind } from '../net-sim/pings';
+import { keyLabel } from '../ui/screens/widgets';
+import type { HudWorld, HudPrompt } from '../ui/hud/types';
+import type { ScoreboardData } from '../ui/screens/scoreboard';
 import { flags } from '../core/flags';
 import { AIDirector, type AIHost } from '../ai/director';
 import { raySoldier } from '../weapons/hitboxes';
@@ -96,12 +100,17 @@ export class Battle implements GameScene, WeaponContext, AIHost {
   private swayT = 0;
   /** Automated runs open the attachment menu without input. */
   forceAttachMenu = false;
+  /** Automated runs show the scoreboard without input. */
+  forceScoreboard = false;
 
   readonly destructibles: Destructibles;
   readonly water: Water | null = null;
   readonly rocket: Rocket | null = null;
   nav: PathFinder | null = null;
   readonly ai: AIDirector;
+  readonly pings: Pings;
+  tactical: TacticalImage | null = null;
+  private pingHeld = -1;
   private navGeometry: THREE.BufferGeometry;
   /** Fixed debug camera from ?cam=x,y,z,tx,ty,tz (screenshots). */
   private debugCam: number[] | null = null;
@@ -178,6 +187,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.viewmodel = new Viewmodel(renderer.aspect);
     this.collision.targets.push(new SoldierTargets(() => this.soldiers, (s) => !s.inVehicle));
     this.ai = new AIDirector(this, map.builder.covers, save.settings.difficulty);
+    this.pings = new Pings(this.events);
 
     this.moveCtx = {
       physics: this.physics,
@@ -205,8 +215,28 @@ export class Battle implements GameScene, WeaponContext, AIHost {
   }
 
   setMode(m: BattleMode): void {
+    if (this.mode) {
+      this.mode.dispose?.();
+      this.clearBots();
+    }
     this.mode = m;
     m.setup(this);
+  }
+
+  /** Removes every soldier except the player (mode changes). */
+  clearBots(): void {
+    for (let i = this.soldiers.length - 1; i >= 0; i--) {
+      const s = this.soldiers[i];
+      if (s === this.player) continue;
+      detachBody(s, this.physics);
+      this.soldiers.splice(i, 1);
+      this.byId.delete(s.id);
+      this.ai.brains.delete(s.id);
+    }
+    this.ai.brains.delete(this.player.id);
+    this.ai.squads.length = 0;
+    this.player.squadId = -1;
+    this.resetWorld();
   }
 
   addSoldier(team: TeamId, name: string, cls: ClassId, spec: SpecialistId, primary: WeaponId, throwable: ThrowableId): Soldier {
@@ -255,12 +285,45 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     s.primary = primary;
     s.throwable = throwable;
     const rocketBonus = SPECIALIST_BY_ID[spec].passiveName === 'Ordnance' ? 2 : 0;
-    s.arsenal = new Arsenal(primary, (id) => (s.isPlayer ? save.data.attachments[id] : undefined) ?? defaultAttachments(id), throwable, rocketBonus);
+    // Saved attachments that are still locked fall back to the weapon's defaults.
+    const att = (id: WeaponId): AttachmentSet => {
+      const saved = s.isPlayer ? save.data.attachments[id] : undefined;
+      const def = defaultAttachments(id);
+      if (!saved) return def;
+      const ok = (k: keyof AttachmentSet) => (attachmentUnlocked(id, saved[k]) ? saved[k] : def[k]);
+      return { sight: ok('sight'), barrel: ok('barrel'), underbarrel: ok('underbarrel'), ammo: ok('ammo') } as AttachmentSet;
+    };
+    s.arsenal = new Arsenal(primary, att, throwable, rocketBonus);
     if (s.isPlayer) this.viewWeapon = null;
+  }
+
+  /** Re-applies the renderer's quality profile to the live scene (settings changes). */
+  applyQuality(): void {
+    const q = this.renderer.quality;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = q.fogNear;
+    fog.far = q.fogFar;
+    this.lighting.applyQuality(q);
+    this.scene.traverse((o) => {
+      if (o.name === 'outline') o.visible = q.outlines;
+      if (this.renderer.shadowChanged) {
+        const m = (o as THREE.Mesh).material;
+        if (m) for (const mm of Array.isArray(m) ? m : [m]) mm.needsUpdate = true;
+      }
+    });
+    this.renderer.shadowChanged = false;
+    this.vfx.setScale(q.particleScale);
   }
 
   /** Renders the holographic tactical map image (once, after load). */
   captureTactical(): TacticalImage {
+    const img = this.captureTacticalImage();
+    this.tactical = img;
+    this.hud?.setMap(img);
+    return img;
+  }
+
+  private captureTacticalImage(): TacticalImage {
     return captureTacticalMap(this.renderer.gl, this.scene, {
       worldSize: this.terrain.size,
       water: this.map.water,
@@ -361,6 +424,8 @@ export class Battle implements GameScene, WeaponContext, AIHost {
     this.throwables.clear();
     this.destructibles.reset();
     this.vfx.clear();
+    this.pings.clear();
+    this.hud?.clearTransient();
   }
 
   smokeBlocks(a: THREE.Vector3, b: THREE.Vector3): boolean {
@@ -422,17 +487,125 @@ export class Battle implements GameScene, WeaponContext, AIHost {
         this.attachClicked = true;
       }
     }
+    // Scoreboard (hold Tab) and full map (M).
+    if (this.hud) {
+      this.hud.scoreboard.show(input.isDown('scoreboard') || this.forceScoreboard);
+      if (input.pressed('map')) this.hud.fullMap?.toggle();
+      if (!p.alive && this.hud.fullMap?.open) this.hud.fullMap.show(false);
+    }
+    this.handlePing(p);
     const zoom = 1 + (a.current.stats.zoom - 1) * a.adsK;
     if (this.ai.brain(p)) {
       // Autoplay: the player's brain writes the command; the camera follows its aim.
       input.takeMouse();
       this.controller.setAim(p.yaw, p.pitch);
     } else this.controller.frame(p, a.adsK, zoom);
-    if (menu?.open) {
+    if (menu?.open || this.hud?.comms.open) {
       p.input.fire = false;
       p.input.firePressed = false;
       p.input.aim = false;
     }
+  }
+
+  /** Q: tap to ping what is under the crosshair; hold for the comms rose. */
+  private handlePing(p: Soldier): void {
+    const hud = this.hud;
+    if (!hud) return;
+    const U = TUNING.ui;
+    if (!p.active) {
+      if (hud.comms.open) hud.comms.hide();
+      this.pingHeld = -1;
+      return;
+    }
+    if (input.pressed('ping')) this.pingHeld = 0;
+    if (this.pingHeld >= 0) {
+      const held = input.heldFor('ping');
+      if (!hud.comms.open && held >= U.commsHoldSeconds) hud.comms.show();
+      if (hud.comms.open) {
+        const [dx, dy] = input.takeMouse();
+        hud.comms.update(dx, dy);
+      }
+      if (input.released('ping') || !input.isDown('ping')) {
+        if (hud.comms.open) {
+          const opt = hud.comms.hide();
+          if (opt) this.sendPing(p, opt.kind, opt.atAim);
+        } else this.sendPing(p, null, true);
+        this.pingHeld = -1;
+      }
+    }
+  }
+
+  /** Publishes a ping from the player: at the crosshair (or on the player for requests). */
+  private sendPing(p: Soldier, kind: PingKind | null, atAim: boolean): void {
+    const aim = viewDir(this.controller.yaw, this.controller.pitch, _v2);
+    if (!atAim) {
+      this.events.emit('ping', { soldier: p, pos: p.pos.clone().setY(p.pos.y + 2.1), kind: kind ?? 'location', follow: p });
+      return;
+    }
+    const hit = this.collision.raycast(this.fp.camera.position, aim, TUNING.ui.pings.maxRange, { ignore: p });
+    if (!hit) return;
+    const target = hit.kind === 'soldier' ? (hit.ref as Soldier) : null;
+    if (target && target.team !== p.team && (kind === null || kind === 'enemy')) {
+      this.ai.spot(p, target);
+      this.events.emit('ping', { soldier: p, pos: target.pos.clone(), kind: 'enemy', follow: target });
+      return;
+    }
+    this.events.emit('ping', { soldier: p, pos: hit.point.clone(), kind: kind ?? 'location' });
+  }
+
+  /** Everything the HUD reads this frame. */
+  hudWorld(): HudWorld {
+    const p = this.player;
+    const info = this.mode?.hudInfo?.();
+    const sq = this.ai.squadOf(p);
+    return {
+      time: this.time,
+      player: p,
+      camera: this.fp.camera,
+      soldiers: this.soldiers,
+      squad: sq?.members ?? [p],
+      squadName: sq?.name ?? '',
+      zones: info?.zones ?? [],
+      tickets: info?.tickets ?? null,
+      ticketMax: info?.ticketMax ?? 1,
+      bleed: info?.bleed ?? [0, 0],
+      kills: info?.kills ?? null,
+      killTarget: info?.killTarget ?? 1,
+      roundT: info?.roundT ?? this.time,
+      timeLeft: info?.timeLeft ?? null,
+      modeName: info?.modeName ?? '',
+      hqs: (this.map.hqs ?? []).map((h) => ({ team: h.team, x: h.center.x, z: h.center.z })),
+      limit: TUNING.movement.mapLimit,
+      map: this.tactical,
+      pings: this.pings.list,
+      frags: this.throwables.near(p.pos, TUNING.ui.grenadeIndicatorRange),
+      prompt: this.interactPrompt(p),
+      hazards: this.hazards,
+    };
+  }
+
+  /** Hazard zones shown on the maps (dynamic events add them). */
+  hazards: { x: number; z: number; r: number; label: string }[] = [];
+
+  scoreboardData(): ScoreboardData {
+    const p = this.player;
+    const info = this.mode?.hudInfo?.();
+    const enemy = p.team === 0 ? 1 : 0;
+    const totals: [number, number] = info?.tickets ? [info.tickets[p.team], info.tickets[enemy]] : info?.kills ? [info.kills[p.team], info.kills[enemy]] : [0, 0];
+    return { player: p, soldiers: this.soldiers, squadName: (s) => this.mode?.squadName?.(s.squadId) ?? '', totals, totalLabel: info?.tickets ? 'Tickets' : 'Kills', roundT: info?.roundT ?? this.time, modeName: info?.modeName ?? '' };
+  }
+
+  /** Context prompt: revive a downed teammate, climb a ladder, ride a zipline. */
+  private interactPrompt(p: Soldier): HudPrompt | null {
+    if (!p.active || p.state === 'ladder' || p.state === 'zipline') return null;
+    const key = keyLabel(save.settings.bindings.interact[0] ?? 'KeyE');
+    const H = TUNING.health;
+    for (const t of this.soldiers)
+      if (t !== p && t.team === p.team && t.downed && t.alive && t.pos.distanceTo(p.pos) < H.reviveRange) return { key, text: `Hold to revive ${t.name}`, hold: t.reviverId === p.id ? t.reviveProgress : 0 };
+    const R = TUNING.ui.interactRange;
+    if (this.interactives.nearestLadder(p.pos, R * 0.6)) return { key, text: 'Climb ladder', hold: null };
+    if (this.interactives.nearestZipline(p.pos, R)) return { key, text: 'Ride zipline', hold: null };
+    return null;
   }
 
   setAttachments(att: AttachmentSet): void {
@@ -461,6 +634,7 @@ export class Battle implements GameScene, WeaponContext, AIHost {
       s.empT = Math.max(0, s.empT - dt);
     }
     this.physics.step();
+    this.pings.update(dt);
     this.mode?.update(dt);
     if (this.stepInFrame++ === 0) for (const s of this.soldiers) clearEdges(s.input);
   }
@@ -558,8 +732,10 @@ export class Battle implements GameScene, WeaponContext, AIHost {
         enemyUnderCrosshair: enemy,
         gadget: null,
         time: this.swayT,
-      });
+      }, this.hudWorld());
     }
+    if (this.hud?.scoreboard.open) this.hud.updateScoreboard(frameDt, this.scoreboardData());
+    this.screenEffects(frameDt);
     this.mode?.frame?.(frameDt);
     this.debug.state = `${p.state} / ${p.stance}${p.sprinting ? ' / sprint' : ''}${p.tacSprint ? ' / tac' : ''}`;
     this.debug.speed = `${speed.toFixed(1)} m/s  y ${p.pos.y.toFixed(1)}`;
@@ -569,6 +745,21 @@ export class Battle implements GameScene, WeaponContext, AIHost {
 
   /** Cinematic camera (deploy screen, kill cam, end of round): hides the viewmodel and HUD. */
   cameraOverride: ((cam: THREE.PerspectiveCamera, dt: number) => void) | null = null;
+  /** Post-process feedback: low-health edge, damage pulse, heavy-hit glitch, downed desaturation. */
+  private screenEffects(dt: number): void {
+    const fx = this.renderer.post?.fx;
+    if (!fx) return;
+    const p = this.player;
+    const hud = this.hud;
+    const low = TUNING.ui.lowHealthFraction;
+    const hp = p.alive && !p.downed ? p.health / 100 : 0;
+    const want = this.cameraOverride ? 0 : Math.max(hp < low && p.alive ? (1 - hp / low) * 0.85 : 0, (hud?.hurt ?? 0) * 0.5, p.downed ? 0.6 : 0);
+    fx.damage += (want - fx.damage) * Math.min(1, dt * 6);
+    const desat = this.cameraOverride ? 0 : p.downed ? 0.7 : 0;
+    fx.desat += (desat - fx.desat) * Math.min(1, dt * 4);
+    fx.chroma = hud && hud.glitchT > 0 && document.documentElement.dataset.motion !== 'reduced' ? (hud.glitchT / TUNING.ui.glitch) * 3 : 0;
+  }
+
   private spectated: Soldier | null = null;
   private spectateT = 0;
 

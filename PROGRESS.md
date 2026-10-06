@@ -15,16 +15,16 @@
 
 - M6: Sector Control. Capture with attacker scaling, contest freeze and neutralize-then-capture; tickets with bleed by zone lead and a ticket per death; squads of four; spawns on HQ, owned uncontested sectors and out-of-combat squadmates; scoring for kills, headshots, assists, sector defense, revives, captures, neutralizations and spots; match flow for the player (deploy screen, downed card with bleed-out, revive status and hold-to-give-up, kill cam card with killer, weapon, distance and their health, end-of-round banner and screen, next round); the deploy screen with a holographic tactical map (orthographic top-down capture rendered once into height and normal targets, then a line treatment with wall edges from the height Laplacian, contours, a 50 m grid, hillshade, water, roads and a dimmed out-of-bounds margin), selectable spawns, squad list, loadout quick-swap (class, specialist, primary with stat bars and level locks, throwable), tickets, sector row and deploy countdown; the end-of-round screen with winner, final tickets, MVP cards, personal stats with tick-ups and XP with level progress; local progression (XP, levels, weapon and attachment unlock levels, weapon mastery counters, unlock-all bypass); the smoke test now drives death, deploy and end of round; unit tests for scoring and progression.
 
+- M7: HUD and menus. Main menu over a live flyover of the battle (Play with match setup for team size and bot difficulty, Loadout, Settings, Controls, Quit, profile panel with level, XP and record); loadout screen (class and specialist cards, a rotating 3D weapon preview in its own renderer, the primary list with unlock levels and mastery, three level-gated options per attachment slot with stat bars that preview the hovered option, throwables); settings (graphics preset with shadow, bloom, outline, particle, resolution-scale and dynamic-resolution overrides applied live; FOV, hip / ADS / vehicle sensitivity, invert Y, screen shake, head bob, difficulty, team size, unlock all; audio mix; colorblind palettes, HUD scale, opacity, motion and the performance readout); full key rebinding with conflicts and defaults; pause menu that halts the simulation. In-match HUD: compass with bearings, cardinal points, objective letters and pings; A-E objective row with capture fill and contest pulse between both ticket bars with bleed arrows; match clock; rotating minimap (holographic map, teammates, squad, spotted enemies, gunfire blips, objectives clamped to the rim, pings, hazards) and squad list; kill feed; merging score stack; directional damage arcs; grenade warnings; capture ring with state and attacker/defender counts; interaction prompts (revive hold progress, ladders, ziplines); reload, low-ammo and no-ammo cues; world markers (objectives with distance and edge clamping, squad and teammate nameplates, downed teammates, spotted enemies, pings); comms rose (hold Q) and quick pings (tap Q) with bots answering in kind; event banners; scoreboard (Tab) and full tactical map (M); low-health edge, damage pulse, heavy-hit chromatic glitch and downed desaturation through the post pass. The smoke test opens and closes every overlay and menu screen.
+
 ## In progress
 
-- M7: HUD and menus.
+- M8: classes, specialists, gadgets, call-in tablet.
 
 ## Next
 
-- M8: classes, specialists, gadgets, call-in tablet.
+- M9: vehicles.
 
 ## Known gaps
 
 - Match pace: with 24v24 bots the losing team currently drains about 20 tickets a minute, so a match would run past 20 minutes; the M12 balance pass tunes bleed and tickets in `tuning.ts` against soak runs.
-- The developer readout (load time, nav kind, movement state) shows under the crosshair until the HUD pass in M7 moves it behind a setting.
-- Settings for FOV and sensitivity are live in the save model and used by the camera and controller; their on-screen sliders arrive with the Settings screen (M7).

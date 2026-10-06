@@ -38,7 +38,7 @@ export interface BotWorld {
   requestPath(b: BotBrain, to: THREE.Vector3): void;
   randomNavPoint(around: THREE.Vector3, r: number, out: THREE.Vector3): boolean;
   spot(by: Soldier, target: Soldier): void;
-  ping(by: Soldier, pos: THREE.Vector3, kind: string): void;
+  ping(by: Soldier, pos: THREE.Vector3, kind: string, follow?: Soldier | null): void;
   /** Direction enemies come from for a team (toward their HQ), for defenders to watch. */
   threatBearing(team: number, from: THREE.Vector3): number;
 }
@@ -242,7 +242,7 @@ export class BotBrain {
       if (this.spotT <= 0 && !(found.spottedUntil > w.time && found.spottedByTeam === s.team)) {
         this.spotT = A.spotting.cooldown;
         w.spot(s, found);
-        if (w.rng.next() < A.spotting.pingChance) w.ping(s, found.pos, 'enemy');
+        if (w.rng.next() < A.spotting.pingChance) w.ping(s, found.pos, 'enemy', found);
       }
     } else {
       this.targetVisible = false;

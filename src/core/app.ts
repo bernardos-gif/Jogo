@@ -1,13 +1,14 @@
-// Application shell: renderer, UI root, boot splash, fixed-step loop, scenes and test hooks.
+// Application shell: renderer, UI root, boot splash, fixed-step loop, scenes, menus (main menu over
+// the live flyover, loadout, settings, controls, pause), live settings and test hooks.
 import { TUNING } from '../config/tuning';
 import { flags, automated } from './flags';
 import { RollingStat } from './stats';
 import { installTestHooks, type TestStats } from './testHooks';
 import { BootSplash } from '../ui/screens/splash';
-import { h, setText } from '../ui/dom';
+import { h, setText, toggle } from '../ui/dom';
 import { Renderer } from '../render/renderer';
 import { input } from './input';
-import { save } from './save';
+import { save, type Settings } from './save';
 import { native } from './native';
 import type { GameScene } from '../scenes/gameScene';
 import { StyleScene } from '../scenes/styleScene';
@@ -19,8 +20,24 @@ import { MatchFlow } from './flow';
 import { damageSoldier } from '../weapons/damage';
 import { buildBreakwater } from '../world/maps/breakwater';
 import { WEAPON_BY_ID } from '../config/content';
+import { MainMenu, type MatchSetup } from '../ui/screens/mainMenu';
+import { SettingsScreen } from '../ui/screens/settings';
+import { ControlsScreen } from '../ui/screens/controls';
+import { LoadoutScreen } from '../ui/screens/loadout';
+import { PauseMenu } from '../ui/screens/pause';
+import { Flyover } from '../scenes/flyover';
 
-export type AppState = 'boot' | 'menu' | 'deploy' | 'playing' | 'paused' | 'dead' | 'end';
+export type AppState = 'boot' | 'menu' | 'playing';
+
+const GRAPHICS_KEYS: (keyof Settings)[] = ['preset', 'shadows', 'bloom', 'outlines', 'dynamicResolution', 'resolutionScale', 'particles'];
+
+interface Menus {
+  main: MainMenu;
+  settings: SettingsScreen;
+  controls: ControlsScreen;
+  loadout: LoadoutScreen;
+  pause: PauseMenu;
+}
 
 export class App {
   readonly canvas: HTMLCanvasElement;
@@ -30,6 +47,13 @@ export class App {
   scene: GameScene | null = null;
   battle: Battle | null = null;
   flow: MatchFlow | null = null;
+  paused = false;
+  private menus: Menus | null = null;
+  private flyover: Flyover | null = null;
+  /** Where Back from a sub-screen returns to. */
+  private backTo: (() => void) | null = null;
+  /** Set when the game releases the mouse itself (so the lock loss is not a pause request). */
+  private expectUnlock = false;
   private flowVisited = new Set<string>();
   private frameMs = new RollingStat(TUNING.test.statsWindow);
   private stepMs = new RollingStat(TUNING.test.statsWindow);
@@ -37,7 +61,6 @@ export class App {
   private matchTime = 0;
   private acc = 0;
   private last = performance.now();
-  private overlay: HTMLDivElement;
   private debugEl: HTMLDivElement;
   private autoT = 0;
 
@@ -49,17 +72,30 @@ export class App {
     this.renderer = new Renderer(this.canvas);
     window.addEventListener('resize', () => this.scene?.resize(this.renderer.aspect));
     input.attach(this.canvas);
-    this.overlay = h('div', { class: 'click-overlay hidden interactive' }, h('div', { class: 'panel brackets scan-in' }, h('div', { class: 'display', text: 'Click to resume' }), h('div', { class: 'label', text: 'Mouse is captured while playing · Esc releases it' })));
-    this.overlay.addEventListener('click', () => input.requestLock());
-    this.ui.appendChild(this.overlay);
-    this.debugEl = h('div', { class: 'debug-readout mono' });
+    this.debugEl = h('div', { class: 'debug-readout mono hidden' });
     this.ui.appendChild(this.debugEl);
-    input.onLockChange(() => this.updateOverlay());
+    input.onLockChange((locked) => {
+      if (!locked && !this.expectUnlock && this.inLiveMatch()) this.pause();
+      this.expectUnlock = false;
+    });
     input.onKey((code, e) => {
       const fsCombo = e && e.metaKey && e.ctrlKey && code === 'KeyF';
       if (!native.isElectron && (code === 'F11' || fsCombo)) native.toggleFullscreen();
+      if (code === 'Escape') this.onEscape();
     });
     installTestHooks(this);
+  }
+
+  /** In a match with the player on the field (not on a flow screen), not paused, not automated. */
+  private inLiveMatch(): boolean {
+    return this.state === 'playing' && !this.paused && !flags.autoplay && !!this.flow && (this.flow.state === 'playing' || this.flow.state === 'downed');
+  }
+
+  private onEscape(): void {
+    const m = this.menus;
+    if (!m || m.settings.open || m.controls.open || m.loadout.open) return;
+    if (this.paused) this.resume();
+    else if (this.inLiveMatch()) this.pause();
   }
 
   async boot(): Promise<void> {
@@ -67,7 +103,8 @@ export class App {
     splash.progress(0.05, 'Loading profile');
     await save.load();
     input.bindings = save.settings.bindings;
-    this.renderer.applyPreset(flags.preset ?? (automated ? 'low' : save.settings.preset));
+    this.applyGraphics();
+    this.applyInterface();
     splash.progress(0.15, 'Initializing renderer');
     await new Promise((r) => setTimeout(r, TUNING.ui.bootSplashMin * 1000));
     if (flags.scene === 'style') {
@@ -86,33 +123,156 @@ export class App {
       this.battle = await Battle.create(this.renderer, map, this.ui, (f, l) => splash.progress(f, l));
       const mode = new SectorMode({ managedPlayer: true });
       this.battle.setMode(mode);
+      this.battle.applyQuality();
       splash.progress(0.95, 'Charting the tactical map');
       await new Promise((r) => setTimeout(r, 0));
       this.flow = new MatchFlow(this.battle, mode, this.ui, this.battle.captureTactical());
       this.flow.onGameplay = (on) => {
         input.gameplay = on && !flags.autoplay;
         if (on && !flags.autoplay) input.requestLock();
-        else if (!on) input.exitLock();
-        this.updateOverlay();
+        else if (!on) {
+          this.expectUnlock = input.locked;
+          input.exitLock();
+        }
       };
       this.battle.debug.load = `load ${((performance.now() - t0) / 1000).toFixed(1)} s`;
       this.scene = this.battle;
+      const zones = map.zones ?? [];
+      this.flyover = new Flyover(
+        [...zones.map((z) => z.center), ...(map.hqs ?? []).map((q) => q.center)].sort((a, b) => Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x)),
+        (x, z) => map.terrain.heightAt(x, z),
+      );
+      this.buildMenus();
     }
     splash.progress(1, 'Ready');
     await splash.hide();
-    this.state = 'playing';
-    input.gameplay = !flags.autoplay;
-    this.flow?.start();
-    this.updateOverlay();
     this.last = performance.now();
     requestAnimationFrame(this.tick);
+    if (!this.flow) {
+      this.state = 'playing';
+      input.gameplay = !flags.autoplay;
+    } else if (flags.autoplay) this.startMatch({ mode: 'sector', teamSize: flags.bots ?? save.settings.teamSize, difficulty: save.settings.difficulty });
+    else this.toMenu();
   }
 
-  private updateOverlay(): void {
-    const show = this.state === 'playing' && !flags.autoplay && !flags.cam && !flags.spectate && !input.locked && !!this.battle && !this.flow?.menuOpen && this.flow?.state !== 'killcam';
-    this.overlay.classList.toggle('hidden', !show);
+  // ---- Menus -----------------------------------------------------------------------------------
+  private buildMenus(): void {
+    const ui = this.ui;
+    const m: Menus = { main: new MainMenu(ui), settings: new SettingsScreen(ui), controls: new ControlsScreen(ui), loadout: new LoadoutScreen(ui), pause: new PauseMenu(ui) };
+    this.menus = m;
+    m.main.onStart = (s) => this.startMatch(s);
+    m.main.onLoadout = () => this.openSub(m.loadout, () => this.toMenu());
+    m.main.onSettings = () => this.openSub(m.settings, () => this.toMenu());
+    m.main.onControls = () => this.openSub(m.controls, () => this.toMenu());
+    m.pause.onResume = () => this.resume();
+    m.pause.onSettings = () => this.openSub(m.settings, () => this.showPause());
+    m.pause.onControls = () => this.openSub(m.controls, () => this.showPause());
+    m.pause.onLeave = () => {
+      this.paused = false;
+      m.pause.hide();
+      this.toMenu();
+    };
+    for (const s of [m.settings, m.controls, m.loadout]) s.onBack = () => this.closeSub();
+    m.settings.onChange = (k) => this.onSettingChange(k);
   }
 
+  private openSub(screen: { show(): void }, back: () => void): void {
+    const m = this.menus!;
+    m.main.hide();
+    m.pause.hide();
+    this.backTo = back;
+    screen.show();
+  }
+
+  private closeSub(): void {
+    const m = this.menus!;
+    m.settings.hide();
+    m.controls.hide();
+    m.loadout.hide();
+    const b = this.backTo;
+    this.backTo = null;
+    b?.();
+  }
+
+  private toMenu(): void {
+    const b = this.battle;
+    if (!b || !this.flow || !this.menus) return;
+    this.state = 'menu';
+    this.paused = false;
+    this.flow.stop();
+    this.flow.onGameplay?.(false);
+    input.gameplay = false;
+    b.hud?.scoreboard.show(false);
+    b.hud?.fullMap?.show(false);
+    const fly = this.flyover;
+    b.cameraOverride = fly ? (cam, dt) => fly.update(cam, dt) : null;
+    this.menus.main.show();
+  }
+
+  private startMatch(setup: MatchSetup): void {
+    const b = this.battle;
+    if (!b || !this.flow) return;
+    this.menus?.main.hide();
+    b.ai.setDifficulty(setup.difficulty);
+    const cur = b.mode instanceof SectorMode ? b.mode : null;
+    if (!cur || cur.teamSize !== setup.teamSize) {
+      const mode = new SectorMode({ teamSize: setup.teamSize, managedPlayer: true });
+      b.setMode(mode);
+      this.flow.setMode(mode);
+    } else cur.restart();
+    this.state = 'playing';
+    this.flow.start();
+  }
+
+  private pause(): void {
+    if (!this.menus) return;
+    this.paused = true;
+    input.gameplay = false;
+    this.showPause();
+  }
+
+  private showPause(): void {
+    this.menus?.pause.show();
+  }
+
+  private resume(): void {
+    if (!this.menus) return;
+    this.paused = false;
+    this.menus.pause.hide();
+    input.gameplay = !flags.autoplay;
+    input.requestLock();
+  }
+
+  // ---- Settings --------------------------------------------------------------------------------
+  private applyGraphics(): void {
+    const st = save.settings;
+    this.renderer.applySettings({ ...st, preset: flags.preset ?? (automated ? 'low' : st.preset) });
+  }
+
+  private applyInterface(): void {
+    const st = save.settings;
+    const root = document.documentElement;
+    if (st.palette === 'default') delete root.dataset.palette;
+    else root.dataset.palette = st.palette;
+    if (st.hudMotion === 'auto') delete root.dataset.motion;
+    else root.dataset.motion = st.hudMotion;
+    root.style.setProperty('--hud-scale', String(st.hudScale));
+    root.style.setProperty('--hud-opacity', String(st.hudOpacity));
+    toggle(this.debugEl, 'hidden', !st.showFps);
+  }
+
+  private onSettingChange(key: keyof Settings): void {
+    if (GRAPHICS_KEYS.includes(key)) {
+      this.applyGraphics();
+      this.battle?.applyQuality();
+    } else if (key === 'difficulty') this.battle?.ai.setDifficulty(save.settings.difficulty);
+    else {
+      this.applyInterface();
+      if (key === 'palette') this.battle?.hud?.refreshPalette();
+    }
+  }
+
+  // ---- Range autopilot -------------------------------------------------------------------------
   /** Scripted pilot for automated runs of the firing range (bots drive the player on the battlefield). */
   private autopilot(dt: number): void {
     const b = this.battle;
@@ -160,6 +320,7 @@ export class App {
     i.pitch = b.controller.pitch;
   }
 
+  // ---- Loop ------------------------------------------------------------------------------------
   private tick = (now: number): void => {
     requestAnimationFrame(this.tick);
     const frameMs = now - this.last;
@@ -168,21 +329,21 @@ export class App {
     if (save.settings.dynamicResolution) this.renderer.trackFrame(frameMs, now / 1000);
     this.last = now;
     this.frames++;
-    if (this.flow) {
-      const before = this.flow.state;
+    if (this.flow && this.state === 'playing' && !this.paused) {
       this.flow.frame(dt);
-      if (this.flow.state !== before) this.updateOverlay();
       this.flowVisited.add(this.flow.state);
     }
-    if (this.scene?.frame) this.scene.frame(dt);
+    if (this.scene?.frame && !this.paused) this.scene.frame(dt);
     if (flags.autoplay && flags.scene === 'range') this.autopilot(dt);
     const step = 1 / TUNING.loop.hz;
     this.acc += dt;
     let steps = 0;
     while (this.acc >= step && steps < TUNING.loop.maxStepsPerFrame) {
       const t0 = performance.now();
-      if (this.state === 'playing') this.matchTime += step;
-      this.scene?.update(step);
+      if (!this.paused) {
+        if (this.state === 'playing') this.matchTime += step;
+        this.scene?.update(step);
+      }
       this.stepMs.push(performance.now() - t0);
       this.acc -= step;
       steps++;
@@ -190,10 +351,13 @@ export class App {
     if (steps >= TUNING.loop.maxStepsPerFrame) this.acc = 0;
     if (this.scene) this.scene.render(this.acc / step, dt);
     else this.renderer.gl.clear();
-    if (this.battle && save.settings.showFps) setText(this.debugEl, Object.values(this.battle.debug).join('\n') + `\n${this.frameMs.percentile(0.5).toFixed(1)} ms  ${this.renderer.drawCalls} calls`);
-    else if (this.battle && !automated) setText(this.debugEl, Object.values(this.battle.debug).join('\n'));
+    if (this.battle && save.settings.showFps) {
+      const fps = 1000 / Math.max(1, this.frameMs.percentile(0.5));
+      setText(this.debugEl, `${fps.toFixed(0)} fps  ${this.frameMs.percentile(0.5).toFixed(1)} ms  sim ${this.stepMs.percentile(0.5).toFixed(1)} ms\n${this.renderer.drawCalls} draw calls  scale ${(this.renderer.dynamicScale * 100).toFixed(0)}%\n${Object.values(this.battle.debug).join('  ')}`);
+    }
   };
 
+  // ---- Test hooks ------------------------------------------------------------------------------
   testStats(): TestStats {
     return {
       state: this.state,
@@ -229,6 +393,32 @@ export class App {
     }
     if (name === 'endRound' && b.mode instanceof SectorMode) {
       b.mode.tickets.tickets[1] = 0;
+      return true;
+    }
+    // UI exercise for automated runs: open and close overlays and menu screens.
+    const m = this.menus;
+    if (name === 'scoreboard' && b.hud) {
+      b.forceScoreboard = !b.forceScoreboard;
+      return true;
+    }
+    if (name === 'fullmap' && b.hud?.fullMap) {
+      b.hud.fullMap.toggle();
+      return true;
+    }
+    if (name === 'pause' && m) {
+      if (this.paused) this.resume();
+      else this.pause();
+      return true;
+    }
+    if (m && (name === 'settings' || name === 'controls' || name === 'loadout')) {
+      const s = m[name];
+      if (s.open) this.closeSub();
+      else this.openSub(s, () => (this.paused ? this.showPause() : this.state === 'menu' ? m.main.show() : undefined));
+      return true;
+    }
+    if (name === 'menu' && m) {
+      if (this.state === 'menu') this.startMatch({ mode: 'sector', teamSize: b.mode instanceof SectorMode ? b.mode.teamSize : save.settings.teamSize, difficulty: save.settings.difficulty });
+      else this.toMenu();
       return true;
     }
     return false;

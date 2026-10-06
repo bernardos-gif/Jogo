@@ -39,6 +39,33 @@ export class Renderer {
     this.resize();
   }
 
+  /** Applies a preset with the user's per-setting overrides (Settings screen). */
+  applySettings(st: { preset: PresetId; shadows: boolean; bloom: boolean; outlines: boolean; dynamicResolution: boolean; resolutionScale: number; particles: number }): void {
+    const base = PRESETS[st.preset];
+    const q: QualityProfile = {
+      ...base,
+      shadows: base.shadows && st.shadows,
+      bloom: st.bloom,
+      outlines: st.outlines,
+      particleScale: base.particleScale * st.particles,
+      maxParticles: Math.round(base.maxParticles * Math.max(0.25, st.particles)),
+    };
+    const shadowChanged = q.shadows !== this.gl.shadowMap.enabled;
+    this.preset = st.preset;
+    this.quality = q;
+    this.resolutionScale = st.resolutionScale;
+    this.dynamicEnabled = st.dynamicResolution;
+    if (!st.dynamicResolution) this.dynamicScale = 1;
+    this.gl.shadowMap.enabled = q.shadows;
+    this.post?.dispose();
+    this.post = new PostFX(this.gl, this.gl.capabilities.isWebGL2 ? q.msaa : 0, q.bloomStrength, q.bloom);
+    this.shadowChanged = shadowChanged;
+    this.resize();
+  }
+
+  /** Set when shadows were toggled (scenes must recompile their materials). */
+  shadowChanged = false;
+
   get pixelRatio(): number {
     return Math.min(window.devicePixelRatio || 1, this.quality.pixelRatioCap) * this.resolutionScale * this.dynamicScale;
   }

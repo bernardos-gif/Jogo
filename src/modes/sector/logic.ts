@@ -8,6 +8,8 @@ export type Owner = TeamId | -1;
 export interface ZoneState {
   id: ZoneId;
   x: number;
+  /** Ground height at the center (markers). */
+  y: number;
   z: number;
   radius: number;
   owner: Owner;
@@ -22,8 +24,8 @@ export interface ZoneState {
 
 export type ZoneEvent = { kind: 'captured'; team: TeamId } | { kind: 'neutralized'; team: TeamId; from: TeamId } | null;
 
-export function newZone(id: ZoneId, x: number, z: number, radius: number, owner: Owner = -1): ZoneState {
-  return { id, x, z, radius, owner, control: owner === 0 ? 1 : owner === 1 ? -1 : 0, counts: [0, 0], contested: false, capturing: -1 };
+export function newZone(id: ZoneId, x: number, z: number, radius: number, owner: Owner = -1, y = 0): ZoneState {
+  return { id, x, y, z, radius, owner, control: owner === 0 ? 1 : owner === 1 ? -1 : 0, counts: [0, 0], contested: false, capturing: -1 };
 }
 
 const sign = (t: TeamId) => (t === 0 ? 1 : -1);

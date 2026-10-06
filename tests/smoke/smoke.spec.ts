@@ -54,8 +54,22 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
   let shot = 0;
   // The smoke run also walks the player through death, the deploy screen and the end of round.
   const acts = soak ? [] : [
+    { at: 0.12, name: 'scoreboard' },
+    { at: 0.16, name: 'scoreboard' },
+    { at: 0.18, name: 'fullmap' },
+    { at: 0.22, name: 'fullmap' },
     { at: 0.3, name: 'killPlayer' },
-    { at: 0.72, name: 'endRound' },
+    { at: 0.5, name: 'pause' },
+    { at: 0.51, name: 'settings' },
+    { at: 0.52, name: 'settings' },
+    { at: 0.53, name: 'controls' },
+    { at: 0.54, name: 'controls' },
+    { at: 0.55, name: 'pause' },
+    { at: 0.66, name: 'endRound' },
+    { at: 0.86, name: 'menu' },
+    { at: 0.87, name: 'loadout' },
+    { at: 0.88, name: 'loadout' },
+    { at: 0.89, name: 'menu' },
   ];
   const act = (name: string) => page.evaluate((n) => (window as unknown as { __vf: { act(n: string): boolean } }).__vf.act(n), name);
   while (Date.now() - t0 < runSeconds * 1000) {

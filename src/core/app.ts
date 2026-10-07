@@ -16,6 +16,7 @@ import { Battle } from '../modes/battle';
 import { buildTraining } from '../world/maps/training';
 import { RangeMode } from '../modes/range';
 import { SectorMode } from '../modes/sector/sectorMode';
+import { SkirmishMode } from '../modes/skirmish';
 import { MatchFlow } from './flow';
 import { damageSoldier } from '../weapons/damage';
 import { buildBreakwater } from '../world/maps/breakwater';
@@ -26,6 +27,8 @@ import { ControlsScreen } from '../ui/screens/controls';
 import { LoadoutScreen } from '../ui/screens/loadout';
 import { PauseMenu } from '../ui/screens/pause';
 import { Flyover } from '../scenes/flyover';
+import { audio } from '../audio/engine';
+import * as sounds from '../audio/sounds';
 
 export type AppState = 'boot' | 'menu' | 'playing';
 
@@ -103,6 +106,14 @@ export class App {
     splash.progress(0.05, 'Loading profile');
     await save.load();
     input.bindings = save.settings.bindings;
+    // Audio: silent in automated runs unless forced on; resumes on the first input in browsers.
+    audio.enabled = flags.audio === 'on' || (!automated && flags.audio !== 'off');
+    audio.init();
+    audio.setVolumes(save.settings);
+    const unlock = () => audio.resume();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    this.hookUiSounds();
     this.applyGraphics();
     this.applyInterface();
     splash.progress(0.15, 'Initializing renderer');
@@ -151,7 +162,7 @@ export class App {
     if (!this.flow) {
       this.state = 'playing';
       input.gameplay = !flags.autoplay;
-    } else if (flags.autoplay) this.startMatch({ mode: 'sector', teamSize: flags.bots ?? save.settings.teamSize, difficulty: save.settings.difficulty });
+    } else if (flags.autoplay) this.startMatch({ mode: flags.mode ?? 'sector', teamSize: flags.bots ?? save.settings.teamSize, difficulty: save.settings.difficulty });
     else this.toMenu();
   }
 
@@ -199,6 +210,8 @@ export class App {
     if (!b || !this.flow || !this.menus) return;
     this.state = 'menu';
     this.paused = false;
+    b.matchLive = false;
+    audio.duck(false);
     this.flow.stop();
     this.flow.onGameplay?.(false);
     input.gameplay = false;
@@ -215,19 +228,39 @@ export class App {
     this.menus?.main.hide();
     b.ai.setDifficulty(setup.difficulty);
     const cur = b.mode instanceof SectorMode ? b.mode : null;
-    if (!cur || cur.teamSize !== setup.teamSize) {
-      const mode = new SectorMode({ teamSize: setup.teamSize, managedPlayer: true });
+    const skirmish = setup.mode === 'skirmish';
+    if (!cur || cur.id !== setup.mode || (!skirmish && cur.teamSize !== setup.teamSize)) {
+      const mode = skirmish ? new SkirmishMode({ managedPlayer: true }) : new SectorMode({ teamSize: setup.teamSize, managedPlayer: true });
       b.setMode(mode);
       this.flow.setMode(mode);
     } else cur.restart();
     this.state = 'playing';
+    b.matchLive = true;
     this.flow.start();
+  }
+
+  /** Hover and click blips for every button-like control in the interface. */
+  private hookUiSounds(): void {
+    const sel = 'button, .btn, .chip-btn, .w-seg button, .ms-item, .card, [data-sound]';
+    let last: Element | null = null;
+    this.ui.addEventListener('pointerover', (e) => {
+      const el = (e.target as Element | null)?.closest?.(sel) ?? null;
+      if (el && el !== last) sounds.ui('hover');
+      last = el;
+    });
+    this.ui.addEventListener('click', (e) => {
+      const el = (e.target as Element | null)?.closest?.(sel);
+      if (!el) return;
+      const back = /back|leave|close|cancel/i.test(el.textContent ?? '') || el.classList.contains('back');
+      sounds.ui(back ? 'back' : 'click');
+    });
   }
 
   private pause(): void {
     if (!this.menus) return;
     this.paused = true;
     input.gameplay = false;
+    audio.duck(true);
     this.showPause();
   }
 
@@ -238,6 +271,7 @@ export class App {
   private resume(): void {
     if (!this.menus) return;
     this.paused = false;
+    audio.duck(false);
     this.menus.pause.hide();
     input.gameplay = !flags.autoplay;
     input.requestLock();
@@ -262,7 +296,8 @@ export class App {
   }
 
   private onSettingChange(key: keyof Settings): void {
-    if (GRAPHICS_KEYS.includes(key)) {
+    if (key.startsWith('vol')) audio.setVolumes(save.settings);
+    else if (GRAPHICS_KEYS.includes(key)) {
       this.applyGraphics();
       this.battle?.applyQuality();
     } else if (key === 'difficulty') this.battle?.ai.setDifficulty(save.settings.difficulty);
@@ -370,12 +405,12 @@ export class App {
       soldiers: this.battle?.soldiers.length ?? 0,
       aliveSoldiers: this.battle?.soldiers.filter((s) => s.alive).length ?? 0,
       kills: this.battle ? this.battle.soldiers.reduce((n, s) => n + s.stats.kills, 0) : 0,
-      tickets: this.battle?.mode instanceof SectorMode ? [Math.round(this.battle.mode.tickets.tickets[0]), Math.round(this.battle.mode.tickets.tickets[1])] : [0, 0],
+      tickets: this.battle?.mode instanceof SectorMode ? [Math.round(this.battle.mode.scores()[0]), Math.round(this.battle.mode.scores()[1])] : [0, 0],
       vehiclesUsed: this.battle ? this.battle.callIns.requests + this.battle.vehicles.entries : 0,
       gadgetsUsed: this.battle?.gadgets.uses ?? 0,
       stormEvents: this.battle?.world.storms ?? 0,
       flowVisited: [...this.flowVisited],
-      notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : '', this.battle.vehicles.list.map((v) => `${v.kind}${v.team}:${v.crewCount}:${Math.round(v.hp)}@${Math.round(v.pos.x)},${Math.round(v.pos.y)},${Math.round(v.pos.z)}${v.alive ? '' : 'X'}`).join(' '), this.battle.ai.crews.debugLine(this.battle.ai.brains)] : [],
+      notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : '', this.battle.vehicles.list.map((v) => `${v.kind}${v.team}:${v.crewCount}:${Math.round(v.hp)}@${Math.round(v.pos.x)},${Math.round(v.pos.y)},${Math.round(v.pos.z)}${v.alive ? '' : 'X'}`).join(' '), this.battle.ai.crews.debugLine(this.battle.ai.brains), `audio ${audio.ctx?.state ?? 'off'} voices ${audio.activeVoices} peak ${audio.peakDb.toFixed(1)} dB rms ${audio.rmsDb.toFixed(1)} dB`] : [],
     };
   }
 
@@ -389,6 +424,10 @@ export class App {
       p.spawnProtectT = 0;
       p.armor = 0;
       damageSoldier(b, p, name === 'killPlayer' ? 400 : p.health + 1, { attacker: foe, weapon: foe?.primary ?? 'tern', part: 'body', explosive: name === 'killPlayer', from: foe?.pos.clone() ?? p.pos.clone(), armorMul: 1 });
+      return true;
+    }
+    if (name === 'endRound' && b.mode instanceof SkirmishMode) {
+      b.mode.timeLeft = 0;
       return true;
     }
     if (name === 'endRound' && b.mode instanceof SectorMode) {
@@ -444,7 +483,7 @@ export class App {
       return true;
     }
     if (name === 'menu' && m) {
-      if (this.state === 'menu') this.startMatch({ mode: 'sector', teamSize: b.mode instanceof SectorMode ? b.mode.teamSize : save.settings.teamSize, difficulty: save.settings.difficulty });
+      if (this.state === 'menu') this.startMatch({ mode: b.mode instanceof SkirmishMode ? 'skirmish' : 'sector', teamSize: b.mode instanceof SectorMode ? b.mode.teamSize : save.settings.teamSize, difficulty: save.settings.difficulty });
       else this.toMenu();
       return true;
     }

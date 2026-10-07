@@ -28,6 +28,8 @@ export interface LaunchFlags {
   tickets: number | null;
   /** --events=fast: the storm and the launch come early (tests and soak runs). */
   events: 'fast' | null;
+  /** --audio=on forces audio in automated runs (they are silent by default); --audio=off mutes. */
+  audio: 'on' | 'off' | null;
 }
 
 function parse(search: string): LaunchFlags {
@@ -56,6 +58,7 @@ function parse(search: string): LaunchFlags {
     tp: on('tp'),
     tickets: num('tickets'),
     events: q.get('events') === 'fast' ? 'fast' : null,
+    audio: q.get('audio') === 'on' ? 'on' : q.get('audio') === 'off' ? 'off' : null,
   };
 }
 

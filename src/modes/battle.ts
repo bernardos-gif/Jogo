@@ -38,6 +38,8 @@ import { Water } from '../world/water';
 import { Rocket } from '../world/rocket';
 import { WorldEvents, type EventHost, type Hazard } from '../world/events';
 import { WeatherFx } from '../world/weather';
+import { GameAudio, type AudioHost } from '../audio/gameAudio';
+import type { Surface } from '../world/surface';
 import { captureTacticalMap, type TacticalImage } from '../render/tacticalMap';
 import { Pings, type PingKind } from '../net-sim/pings';
 import { GadgetSystem, type GadgetContext } from '../gadgets/system';
@@ -66,11 +68,12 @@ import type { BodyMode } from '../art/soldierAnim';
 
 const MOUNT_NAMES: Record<string, string> = { cannon: 'Siege cannon', coax: 'Coax beam', rockets: 'Rocket pods', chin: 'Chin turret', minigun: 'Twin miniguns', doorgun: 'Door gun' };
 const _v = new THREE.Vector3();
+const _down = new THREE.Vector3(0, -1, 0);
 const _v2 = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const makeHitTmp = makeHit();
 
-export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, VehicleContext, EventHost {
+export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, VehicleContext, EventHost, AudioHost {
   readonly scene = new THREE.Scene();
   readonly physics: Physics;
   readonly collision = new CollisionWorld();
@@ -102,6 +105,9 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
   readonly world: WorldEvents;
   private weather: WeatherFx;
   private skyT = 0;
+  private sound: GameAudio;
+  /** Set by the app while a round is being played (the menu flyover keeps it false). */
+  matchLive = false;
   private skyState: SkyState = newSkyState();
   private stepInFrame = 0;
   private nextId = 1;
@@ -220,6 +226,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     this.world = new WorldEvents(this, flags.events === 'fast');
     this.world.enabled = !!map.hqs;
     this.weather = new WeatherFx(this.scene, q.particleScale);
+    this.sound = new GameAudio(this);
 
     this.moveCtx = {
       physics: this.physics,
@@ -253,6 +260,14 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     }
     this.mode = m;
     m.setup(this);
+  }
+
+  /** Vehicles on the HQ pads and airdrops on or off (Skirmish is infantry only). */
+  setVehiclesEnabled(on: boolean): void {
+    this.callIns.enabled = on;
+    this.vehicles.pads.length = 0;
+    if (on && this.map.hqs) this.vehicles.setupPads(this.map.hqs, (x, z) => this.terrain.heightAt(x, z));
+    this.vehicles.reset(this);
   }
 
   /** Removes every soldier except the player (mode changes). */
@@ -724,7 +739,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     const tab = this.hud?.tablet;
     if (!tab) return;
     const C = TUNING.callins;
-    if (!p.active || p.inVehicle || p.piloting) {
+    if (!p.active || p.inVehicle || p.piloting || !this.callIns.enabled) {
       if (tab.open) tab.hide();
       return;
     }
@@ -1219,6 +1234,24 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     this.fp.camera.updateProjectionMatrix();
   }
 
+  // ---- Audio host -------------------------------------------------------------------------------
+  surfaceUnder(p: THREE.Vector3): Surface {
+    const hit = this.collision.raycast(_v.set(p.x, p.y + 0.5, p.z), _down, 2, { worldOnly: true });
+    return hit ? hit.surface : this.terrain.surfaceAt(p.x, p.z);
+  }
+
+  scoreFraction(): number {
+    const info = this.mode?.hudInfo?.();
+    if (!info) return 1;
+    if (info.tickets) return Math.min(info.tickets[0], info.tickets[1]) / Math.max(1, info.ticketMax);
+    if (info.kills) return 1 - Math.max(info.kills[0], info.kills[1]) / Math.max(1, info.killTarget);
+    return 1;
+  }
+
+  inMatch(): boolean {
+    return this.matchLive;
+  }
+
   /** Storm visuals, the day drift, storm fog and the weather around the camera. */
   private atmosphere(frameDt: number, alpha: number): void {
     const cam = this.fp.camera.position;
@@ -1237,10 +1270,12 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     fog.near = q.fogNear + (S.fogNear - q.fogNear) * w.fogMix;
     fog.far = q.fogFar + (S.fogFar - q.fogFar) * w.fogMix;
     this.weather.update(frameDt, cam, w.wind, w.rain, w.dust, this.skyState.fog);
+    this.sound.update(frameDt, this.fp.camera);
     this.sky.update(frameDt, cam, w.wind.length());
   }
 
   dispose(): void {
+    this.sound.dispose();
     this.world.dispose();
     this.weather.dispose();
     this.mode?.dispose?.();

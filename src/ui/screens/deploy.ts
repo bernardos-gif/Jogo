@@ -21,6 +21,8 @@ export interface DeployContext {
   squad: readonly Soldier[];
   zones: readonly ZoneState[];
   tickets: [number, number];
+  scoreLabel: string;
+  scoreMax: number;
   hqs: readonly { team: TeamId; x: number; z: number }[];
   limit: number;
   roundT: number;
@@ -50,6 +52,7 @@ export class DeployScreen {
   private weaponBars: HTMLDivElement;
   private throwRow: HTMLDivElement;
   private ticketsEl: HTMLDivElement;
+  private ticketsLabel = h('div', { class: 'label', text: 'Tickets' });
   private zonesEl: HTMLDivElement;
   private spawnLabel: HTMLDivElement;
   private spawnSub: HTMLDivElement;
@@ -99,7 +102,7 @@ export class DeployScreen {
     const right = h(
       'div',
       { class: 'dp-right panel strong brackets scan-in' },
-      h('div', { class: 'dp-section' }, h('div', { class: 'label', text: 'Tickets' }), this.ticketsEl),
+      h('div', { class: 'dp-section' }, this.ticketsLabel, this.ticketsEl),
       h('div', { class: 'dp-section' }, h('div', { class: 'label', text: 'Sectors' }), this.zonesEl),
       h('div', { class: 'dp-section dp-grow' }, h('div', { class: 'label', text: 'Spawn point' }), this.spawnLabel, this.spawnSub),
       h('div', { class: 'dp-section' }, this.deployBtn, h('div', { class: 'dp-hint label', text: 'Click the map to pick a spawn · Space to deploy' })),
@@ -223,7 +226,8 @@ export class DeployScreen {
   private renderMatch(c: DeployContext): void {
     const team = c.player.team;
     const enemy: TeamId = team === 0 ? 1 : 0;
-    const max = Math.max(1, c.tickets[0], c.tickets[1], 600);
+    const max = Math.max(1, c.tickets[0], c.tickets[1], c.scoreMax);
+    setText(this.ticketsLabel, c.scoreLabel);
     clear(this.ticketsEl);
     for (const [t, cls] of [
       [team, 'friend'],

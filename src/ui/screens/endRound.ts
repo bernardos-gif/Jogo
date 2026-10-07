@@ -8,8 +8,9 @@ export interface EndRoundData {
   won: boolean;
   title: string;
   sub: string;
-  /** Friendly then enemy. */
+  /** Friendly then enemy (tickets or kills). */
   tickets: [number, number];
+  scoreLabel: string;
   teamNames: [string, string];
   duration: number;
   mvps: { title: string; name: string; value: string; friendly: boolean }[];
@@ -95,7 +96,7 @@ export class EndRoundScreen {
       [1, 'foe'],
     ] as [number, string][]) {
       const n = h('span', { class: 'num' });
-      this.tickets.append(h('div', { class: `er-t ${cls}` }, h('span', { class: 'label', text: d.teamNames[i] }), n));
+      this.tickets.append(h('div', { class: `er-t ${cls}` }, h('span', { class: 'label', text: `${d.teamNames[i]} · ${d.scoreLabel}` }), n));
       tickUp(n, d.tickets[i]);
     }
     clear(this.mvps);

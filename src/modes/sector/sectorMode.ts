@@ -25,7 +25,11 @@ function startTickets(): number {
 }
 
 export class SectorMode implements BattleMode {
-  readonly id = 'sector';
+  readonly id: string = 'sector';
+  readonly modeName: string = 'Sector Control';
+  /** Vehicles on HQ pads and airdrops (Skirmish is infantry only). */
+  protected vehiclesEnabled = true;
+  protected respawnDelay: number = S.respawnDelay;
   zones: ZoneState[] = [];
   readonly tickets: TicketState = { tickets: [startTickets(), startTickets()] };
   state: RoundState = 'playing';
@@ -38,9 +42,9 @@ export class SectorMode implements BattleMode {
   autoDeployPlayer = true;
   /** Without an end-of-round screen the mode restarts rounds itself. */
   autoRestart = true;
-  private b!: Battle;
-  private off: (() => void)[] = [];
-  private scoring: Scoring | null = null;
+  protected b!: Battle;
+  protected off: (() => void)[] = [];
+  protected scoring: Scoring | null = null;
 
   constructor(opts: { teamSize?: number; managedPlayer?: boolean } = {}) {
     const n = opts.teamSize ?? flags.bots ?? save.settings.teamSize;
@@ -55,17 +59,40 @@ export class SectorMode implements BattleMode {
     this.b = b;
     const defs = b.map.zones ?? [];
     this.zones = defs.map((d) => newZone(d.id, d.center.x, d.center.z, d.radius, -1, b.terrain.heightAt(d.center.x, d.center.z)));
+    b.setVehiclesEnabled(this.vehiclesEnabled);
     this.buildRoster();
     b.ai.buildSquads();
     b.ai.objectives = () => ({ zones: this.zones, tickets: this.tickets.tickets });
     this.scoring = new Scoring(b.events, () => this.zones);
+    this.watchDeaths();
+    this.deployAll();
+  }
+
+  /** A ticket per death; the round ends when a team runs out. */
+  protected watchDeaths(): void {
     this.off.push(
-      b.events.on('death', (e) => {
+      this.b.events.on('death', (e) => {
         if (this.state !== 'playing') return;
         if (onDeath(this.tickets, e.victim.team) !== -1) this.end();
       }),
     );
-    this.deployAll();
+  }
+
+  /** Round score per team (tickets here, kills in Skirmish), what it is called, and its scale. */
+  scores(): [number, number] {
+    return [this.tickets.tickets[0], this.tickets.tickets[1]];
+  }
+
+  get scoreLabel(): string {
+    return 'Tickets';
+  }
+
+  get scoreMax(): number {
+    return startTickets();
+  }
+
+  get respawnSeconds(): number {
+    return this.respawnDelay;
   }
 
   dispose(): void {
@@ -154,7 +181,7 @@ export class SectorMode implements BattleMode {
   }
 
   /** Bot spawn choice: the owned zone nearest the squad's objective, a squadmate, or HQ. */
-  private chooseBotSpawn(s: Soldier): SpawnOption {
+  protected chooseBotSpawn(s: Soldier): SpawnOption {
     const opts = this.options(s);
     const sq = this.b.ai.squadOf(s);
     const goal = sq?.order.zone ? sq.order.pos : null;
@@ -181,7 +208,7 @@ export class SectorMode implements BattleMode {
     this.b.events.emit('spawn', { soldier: s });
   }
 
-  private deployAll(): void {
+  protected deployAll(): void {
     for (const s of this.b.soldiers) {
       if (s.dummy) continue;
       if (s.isPlayer && !this.autoDeployPlayer) {
@@ -193,7 +220,7 @@ export class SectorMode implements BattleMode {
   }
 
   hudInfo(): ModeHudInfo {
-    return { modeName: 'Sector Control', zones: this.zones, tickets: this.tickets.tickets, ticketMax: startTickets(), bleed: bleedRates(this.zones), kills: null, killTarget: 0, roundT: this.roundT, timeLeft: null };
+    return { modeName: this.modeName, zones: this.zones, tickets: this.tickets.tickets, ticketMax: startTickets(), bleed: bleedRates(this.zones), kills: null, killTarget: 0, roundT: this.roundT, timeLeft: null };
   }
 
   squadName(id: number): string {
@@ -201,13 +228,23 @@ export class SectorMode implements BattleMode {
   }
 
   // ---- Round flow ------------------------------------------------------------------------------
-  private end(): void {
+  protected end(): void {
     if (this.state === 'ended') return;
-    const loser = this.tickets.tickets[0] <= 0 ? 0 : 1;
-    this.winner = loser === 0 ? 1 : 0;
+    this.winner = this.decideWinner();
     this.state = 'ended';
     this.endT = 0;
-    this.b.events.emit('announce', { text: this.winner === this.b.player.team ? 'Victory' : 'Defeat', sub: 'Sector Control', tone: this.winner === this.b.player.team ? 'good' : 'bad' });
+    const me = this.b.player.team;
+    this.b.events.emit('announce', { text: this.winner === -1 ? 'Draw' : this.winner === me ? 'Victory' : 'Defeat', sub: this.modeName, tone: this.winner === me ? 'good' : this.winner === -1 ? 'info' : 'bad' });
+  }
+
+  protected decideWinner(): Owner {
+    return this.tickets.tickets[0] <= 0 ? 1 : 0;
+  }
+
+  /** Resets the round score (tickets). */
+  protected resetScores(): void {
+    this.tickets.tickets[0] = startTickets();
+    this.tickets.tickets[1] = startTickets();
   }
 
   restart(): void {
@@ -215,8 +252,7 @@ export class SectorMode implements BattleMode {
     this.state = 'playing';
     this.winner = -1;
     this.roundT = 0;
-    this.tickets.tickets[0] = startTickets();
-    this.tickets.tickets[1] = startTickets();
+    this.resetScores();
     for (const z of this.zones) {
       z.owner = -1;
       z.control = 0;
@@ -231,14 +267,19 @@ export class SectorMode implements BattleMode {
   }
 
   update(dt: number): void {
-    const b = this.b;
     if (this.state === 'ended') {
       this.endT += dt;
       if (this.endT > S.endScreenSeconds && this.autoRestart) this.restart();
       return;
     }
     this.roundT += dt;
-    // Capture.
+    if (this.stepObjectives(dt)) return;
+    this.stepRespawns();
+  }
+
+  /** Capture and ticket bleed; true when the round just ended. */
+  protected stepObjectives(dt: number): boolean {
+    const b = this.b;
     for (const z of this.zones) {
       const counts: [number, number] = [0, 0];
       for (const s of b.soldiers) if (s.active && !s.dummy && inZone(z, s.pos.x, s.pos.z) && Math.abs(s.pos.y - b.terrain.heightAt(z.x, z.z)) < 40) counts[s.team]++;
@@ -256,15 +297,20 @@ export class SectorMode implements BattleMode {
     }
     if (stepTickets(this.tickets, this.zones, dt) !== -1) {
       this.end();
-      return;
+      return true;
     }
-    // Respawns and downed bots that give up.
+    return false;
+  }
+
+  /** Respawns and downed bots that give up. */
+  protected stepRespawns(): void {
+    const b = this.b;
     for (const s of b.soldiers) {
       if (s.dummy) continue;
       const bot = !s.isPlayer || flags.autoplay;
       if (!s.alive) {
         // The player respawns through the deploy screen unless the mode manages it.
-        if (s.deadT > S.respawnDelay && (!s.isPlayer || this.autoDeployPlayer)) this.deploy(s, bot ? this.chooseBotSpawn(s) : this.options(s)[0]);
+        if (s.deadT > this.respawnDelay && (!s.isPlayer || this.autoDeployPlayer)) this.deploy(s, bot ? this.chooseBotSpawn(s) : this.options(s)[0]);
         continue;
       }
       if (s.downed && bot && TUNING.health.downedSeconds - s.downedT > TUNING.ai.downedGiveUp && s.reviverId === -1) {

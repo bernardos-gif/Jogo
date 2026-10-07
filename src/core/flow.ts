@@ -254,13 +254,15 @@ export class MatchFlow {
       player: p,
       squadName: sq?.name ?? '—',
       squad: sq?.members ?? [p],
-      zones: this.mode.zones,
-      tickets: this.mode.tickets.tickets,
+      zones: this.mode.hudInfo().zones,
+      tickets: this.mode.scores(),
+      scoreLabel: this.mode.scoreLabel,
+      scoreMax: this.mode.scoreMax,
       hqs: (b.map.hqs ?? []).map((hq) => ({ team: hq.team, x: hq.center.x, z: hq.center.z })),
       limit: TUNING.movement.mapLimit,
       roundT: this.mode.roundT,
       options: this.mode.options(p),
-      respawnLeft: Math.max(0, S.respawnDelay - p.deadT),
+      respawnLeft: Math.max(0, this.mode.respawnSeconds - p.deadT),
       units,
       time: b.time,
     };
@@ -322,6 +324,8 @@ export class MatchFlow {
     const team = p.team;
     const enemy: TeamId = team === 0 ? 1 : 0;
     const won = this.mode.winner === team;
+    const draw = this.mode.winner === -1;
+    const sc = this.mode.scores();
     const all = b.soldiers.filter((s) => !s.dummy);
     const top = (key: keyof Soldier['stats'], title: string, unit = '') => {
       let best: Soldier | null = null;
@@ -335,9 +339,10 @@ export class MatchFlow {
     const after = levelFor(save.data.progression.xp + xpGain);
     return {
       won,
-      title: won ? 'Victory' : 'Defeat',
-      sub: `${FACTIONS[this.mode.winner === -1 ? team : (this.mode.winner as TeamId)].name} holds Breakwater`,
-      tickets: [Math.ceil(this.mode.tickets.tickets[team]), Math.ceil(this.mode.tickets.tickets[enemy])],
+      title: won ? 'Victory' : draw ? 'Draw' : 'Defeat',
+      sub: draw ? `${this.mode.modeName}: dead even` : `${FACTIONS[this.mode.winner as TeamId].name} ${this.mode.id === 'skirmish' ? 'wins the skirmish' : 'holds Breakwater'}`,
+      tickets: [Math.ceil(sc[team]), Math.ceil(sc[enemy])],
+      scoreLabel: this.mode.scoreLabel,
       teamNames: [FACTIONS[team].name, FACTIONS[enemy].name],
       duration: this.mode.roundT,
       mvps,

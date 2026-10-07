@@ -106,3 +106,15 @@ One line per choice. Newest entries are appended at the end of each section.
 - The day starts in the afternoon and passes Elemental Brawl's exact sunset at the round's midpoint, ending at dusk after 20 minutes.
 - Lightning and the storm core credit no attacker; deaths show the storm or lightning as the cause in the kill feed.
 
+## Audio
+
+- All audio is synthesized at runtime with Web Audio (oscillators, generated noise and generated reverb impulses); there are no audio files.
+- Electron starts audio without a click (`autoplay-policy`); the browser build unlocks it on the first key or pointer press.
+- Remote gunshots are rate-limited per soldier (one sound per 45 ms) and impacts to a few per frame; sounds past their hearing range are skipped and far gunshots drop their transient layer, which keeps a 48-soldier firefight within the voice budget.
+- Smoke and soak runs are silent by default because CI machines have no audio device; `--audio=on` turns audio on for automated checks.
+
+## Skirmish
+
+- Skirmish is a fast infantry mode: 8 v 8 in and around Core Plaza (five drop points: the plaza and four points 95 m out), first to 75 kills or the most kills after 15 minutes, 4 s respawns, no vehicles or airdrops. Ownership of a drop point follows whoever stands at it, which is what the bots chase, so squads keep running into each other.
+- Deaths without an enemy killer (storm, lightning, falls, suicides) count for the other team.
+

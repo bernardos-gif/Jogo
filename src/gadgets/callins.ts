@@ -36,11 +36,13 @@ export class CallIns {
   /** Called when a pod lands (the vehicle system spawns the vehicle). */
   onLand: ((kind: VehicleKind, team: TeamId, pos: THREE.Vector3, yaw: number, requester: Soldier) => void) | null = null;
   requests = 0;
+  /** Off in infantry-only modes. */
+  enabled = true;
 
   constructor(private scene: THREE.Scene) {}
 
   ready(team: TeamId, kind: CallInKind): boolean {
-    return this.cooldowns[team][kind] <= 0;
+    return this.enabled && this.cooldowns[team][kind] <= 0;
   }
 
   /** Requests a drop at a ground point. Returns false while on cooldown. */

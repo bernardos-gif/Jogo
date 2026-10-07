@@ -29,7 +29,10 @@ export class MainMenu {
   onSettings: (() => void) | null = null;
   onControls: (() => void) | null = null;
   /** Modes offered in the setup panel. */
-  modes: { id: MatchModeId; label: string }[] = [{ id: 'sector', label: 'Sector Control' }];
+  modes: { id: MatchModeId; label: string }[] = [
+    { id: 'sector', label: 'Sector Control' },
+    { id: 'skirmish', label: 'Skirmish' },
+  ];
 
   constructor(parent: HTMLElement) {
     const nav = (text: string, fn: () => void, cls = '') => h('button', { class: `btn menu-btn ${cls}`, text, on: { click: fn } });

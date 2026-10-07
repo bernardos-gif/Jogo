@@ -15,7 +15,7 @@ const flag = (name: string): string | null => {
 };
 
 const forwarded: Record<string, string> = {};
-for (const name of ['autoplay', 'smoke', 'soak', 'mode', 'seed', 'preset', 'size', 'bots', 'scene', 'cam', 'spectate', 'tickets', 'tp', 'events']) {
+for (const name of ['autoplay', 'smoke', 'soak', 'mode', 'seed', 'preset', 'size', 'bots', 'scene', 'cam', 'spectate', 'tickets', 'tp', 'events', 'audio']) {
   const v = flag(name);
   if (v !== null) forwarded[name] = v;
 }
@@ -25,6 +25,8 @@ const headlessTest = forwarded.smoke !== undefined || forwarded.soak !== undefin
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+// Audio starts with the game (no click needed to unlock the AudioContext).
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 if (headlessTest) app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
 const savePath = (): string => join(app.getPath('userData'), 'vector-front-save.json');

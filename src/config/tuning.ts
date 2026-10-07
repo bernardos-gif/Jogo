@@ -326,6 +326,34 @@ export const TUNING = {
   },
 
   // ---------------------------------------------------------------------------------------------
+  // Audio: hearing ranges, voice budget, distance model and the adaptive score
+  audio: {
+    speedOfSound: 343,
+    /** Beyond these distances a sound is not played at all. */
+    hear: { shot: 650, shotSuppressed: 120, impact: 70, explosion: 1100, footstep: 32, reload: 18, vehicle: 260, thunder: 1400 },
+    /** Gunshots past this distance use the cheap far layer only. */
+    farShot: 160,
+    /** Concurrent one-shot voices; quieter, farther sounds are dropped first. */
+    maxVoices: 56,
+    /** Distance model: gain = ref / (ref + rolloff * (d - ref)); low-pass cutoff falls with distance. */
+    refDistance: 6,
+    rolloff: 1.1,
+    cutoffNear: 18000,
+    cutoffFar: 900,
+    cutoffDistance: 500,
+    /** Indoor reverb when a roof and walls are this close to the listener. */
+    roofProbe: 14,
+    wallProbe: 11,
+    reverbOutdoor: { seconds: 1.8, decay: 3.2, brightness: 0.35 },
+    reverbIndoor: { seconds: 0.9, decay: 2.2, brightness: 0.8 },
+    footstepStride: { walk: 1.7, sprint: 2.3, crouch: 1.3 },
+    /** Adaptive score: tempo and the score fraction below which the music intensifies. */
+    musicTempo: [92, 124] as [number, number],
+    lowScore: 0.35,
+    combatHold: 6,
+  },
+
+  // ---------------------------------------------------------------------------------------------
   // Time of day and weather
   weather: {
     /** Day drift: 0 afternoon, 0.5 sunset, 1 dusk, across dayLength seconds of a round. */
@@ -525,6 +553,13 @@ export const TUNING = {
     killTarget: 75,
     respawnDelay: 4,
     timeLimit: 900,
+    /** The arena: five drop points, Core Plaza and four around it at this distance. */
+    arenaRing: 95,
+    hotspotRadius: 26,
+    /** A team holds a drop point while it has more soldiers within this many radii of it. */
+    presenceRadiusMul: 2.2,
+    /** A drop point is offered when no enemy is this close to its sector. */
+    dropEnemyRadius: 35,
   },
 
   // ---------------------------------------------------------------------------------------------

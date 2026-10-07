@@ -494,6 +494,7 @@ export class VehicleSystem implements RayTargetSet {
       ctx.projectiles.spawn('shell', mz, dir, C.velocity, s, this.stats.cannon, { weaponName: 'Basalt cannon', ignore: v, splash: { damage: C.splashDamage, radius: C.splashRadius, inner: 1.2, vehicle: C.vehicleDamage }, directDamage: C.damage, vehicleDamage: C.vehicleDamage, energy: 'kinetic', tracer: true });
       muzzleFlash(ctx.vfx, mz, dir, 'kinetic', 3, true);
       dustKick(ctx.vfx, v.pos, 1);
+      ctx.events.emit('mountShot', { soldier: s, kind: 'cannon', pos: mz.clone() });
       m.ammo = 0;
       m.reloadT = C.reload;
       m.cooldown = 0.2;
@@ -511,6 +512,7 @@ export class VehicleSystem implements RayTargetSet {
       const p = ctx.projectiles.spawn('rocket', mz, _v3, R.velocity, s, this.stats.rockets, { weaponName: 'Condor rockets', ignore: v, trail, splash: { damage: R.splashDamage, radius: R.splashRadius, inner: 1, vehicle: R.vehicleDamage }, directDamage: R.damage, vehicleDamage: R.vehicleDamage, life: 4, tracer: false });
       if (p) ctx.vfx.addTrail(trail, () => p.pos, () => !p.active);
       muzzleFlash(ctx.vfx, mz, dir, 'rocket', 1.2, false);
+      ctx.events.emit('mountShot', { soldier: s, kind: 'rockets', pos: mz.clone() });
       m.side++;
       m.ammo--;
       m.salvoLeft--;
@@ -532,7 +534,10 @@ export class VehicleSystem implements RayTargetSet {
       const st = this.stats[m.kind as 'coax'];
       const splash = m.kind === 'chin' ? { damage: VW.chin.splashDamage, radius: VW.chin.splashRadius, inner: 0.5, vehicle: 30 } : null;
       ctx.projectiles.spawn(m.kind === 'chin' ? 'cannon' : 'bullet', mz, _v3, M.velocity, s, st, { weaponName: m.kind === 'coax' ? 'Coax beam' : m.kind === 'chin' ? 'Chin turret' : m.kind === 'minigun' ? 'Miniguns' : 'Door gun', ignore: v, tracer: m.side++ % 2 === 0, splash, energy: st.energy });
-      if (shots === 1) muzzleFlash(ctx.vfx, mz, dir, st.energy, m.kind === 'chin' ? 1.4 : 0.9, false);
+      if (shots === 1) {
+        muzzleFlash(ctx.vfx, mz, dir, st.energy, m.kind === 'chin' ? 1.4 : 0.9, false);
+        ctx.events.emit('mountShot', { soldier: s, kind: m.kind ?? 'coax', pos: mz.clone() });
+      }
       m.heat += M.heatPerShot;
       if (m.heat >= 1) {
         m.heat = 1;

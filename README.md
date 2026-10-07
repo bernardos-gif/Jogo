@@ -4,6 +4,10 @@ Vector Front is a large-scale futuristic first-person shooter for macOS. Two fac
 
 Every model, effect, texture, sound and piece of music is generated in code. Nothing is downloaded at runtime and the game works offline. The 3D look follows the toon style of Elemental Brawl (see `STYLE_GUIDE.md`); everything else is new.
 
+## Download
+
+Get the latest `Vector-Front-…-universal.dmg` from the [Releases page](https://github.com/bernardos-gif/Jogo/releases), then follow "Opening the app" below. Pushing a `v*` tag builds a new release on a macOS runner (`.github/workflows/release.yml`).
+
 ## Quick start
 
 Requirements: Node.js 20 or newer and npm. The packaged app runs on macOS 12 or newer, on Apple Silicon or Intel.

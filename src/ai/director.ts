@@ -16,6 +16,7 @@ import type { GadgetSystem } from '../gadgets/system';
 import type { VehicleSystem } from '../vehicles/system';
 import type { Vehicle } from '../vehicles/vehicle';
 import type { CallInKind } from '../gadgets/callins';
+import type { Hazard } from '../world/events';
 import type { AimProfile } from './aim';
 import type { ObjectiveView } from './utility';
 import type { Soldier } from '../player/soldier';
@@ -52,6 +53,10 @@ export interface AIHost {
   switchSeat(s: Soldier, seat: number): boolean;
   requestCallIn(s: Soldier, kind: CallInKind): boolean;
   readonly mapLimit: number;
+  /** Map hazards (storm, launch blast); bots leave the dangerous ones. */
+  readonly hazards: readonly Hazard[];
+  /** Extra threat squads see at an objective near a hazard. */
+  zoneThreat(x: number, z: number): number;
 }
 
 export interface ObjectiveSource {
@@ -86,6 +91,7 @@ export class AIDirector implements BotWorld, CrewHost {
   pathsServed = 0;
   private botGadgets: BotGadgets | null = null;
   readonly crews: VehicleCrews;
+  private hazardT = 0;
 
   constructor(
     readonly host: AIHost,
@@ -328,6 +334,20 @@ export class AIDirector implements BotWorld, CrewHost {
       else q.b.setPath([q.to.clone()]);
       this.pathsServed++;
     }
+    // Hazards: bots inside a dangerous one run out of it.
+    this.hazardT -= dt;
+    if (this.hazardT <= 0) {
+      this.hazardT = 0.5;
+      for (const hz of this.host.hazards) {
+        if (!hz.danger) continue;
+        const r = hz.label === 'Ion storm' ? TUNING.events.storm.botAvoid : hz.r + 6;
+        for (const b of this.brains.values()) {
+          const s = b.s;
+          if (!s.active || s.inVehicle) continue;
+          if (Math.hypot(s.pos.x - hz.x, s.pos.z - hz.z) < r) b.evadeFrom(hz.x, hz.z, 2.5, this);
+        }
+      }
+    }
     this.botGadgets ??= new BotGadgets(this.host.gadgets, () => this.host.soldiers, this.rng, this.host.vehicles);
     for (const b of this.brains.values()) {
       b.tick(dt, this);
@@ -339,7 +359,7 @@ export class AIDirector implements BotWorld, CrewHost {
 
   private viewsFor(team: TeamId): ObjectiveView[] {
     const enemy = team === 0 ? 1 : 0;
-    for (const v of this.views) v.enemiesNear = v.n[enemy];
+    for (const v of this.views) v.enemiesNear = v.n[enemy] + this.host.zoneThreat(v.x, v.z);
     return this.views;
   }
 

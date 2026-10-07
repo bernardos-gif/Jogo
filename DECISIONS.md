@@ -97,3 +97,12 @@ One line per choice. Newest entries are appended at the end of each section.
 - Bot pilots fly an orbit 120 m around their squad's objective at 70 m above the terrain ahead and dive on targets to 38 m, pulling out at 45 m from the target; this keeps aircraft visible and threatening without making them unbeatable.
 - Bots fire launchers at vehicles only on a lock, or dumb-fire inside 70 m after holding aim for 2.5 s.
 
+## Dynamic events and weather
+
+- The first ion storm comes 3.5 to 5.5 minutes into a round, and half the rounds get a second one at 12.5 to 15 minutes; the launch countdown starts at 9.5 to 12 minutes. Rounds that end sooner skip what has not happened yet.
+- The storm always crosses east to west or west to east, aimed at one of the middle objectives, so it cuts across the fight between the HQs instead of running along a base.
+- "Fuel tanks destroyed" means half or more of the four tagged tanks at the fuel farm; the tanks chain-react, so one good hit usually takes the farm and dooms the rocket.
+- Launch outcomes are permanent for the round; a new round restores the rocket and clears the rubble. The rubble does not rebuild the navmesh (bots treat it as an obstacle they steer around).
+- The day starts in the afternoon and passes Elemental Brawl's exact sunset at the round's midpoint, ending at dusk after 20 minutes.
+- Lightning and the storm core credit no attacker; deaths show the storm or lightning as the cause in the kill feed.
+

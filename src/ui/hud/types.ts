@@ -6,6 +6,7 @@ import type { TacticalImage } from '../../render/tacticalMap';
 import type { Ping } from '../../net-sim/pings';
 import type { TeamId } from '../../config/content';
 import type { VehicleView } from './vehicleHud';
+import type { Hazard, EventTimer } from '../../world/events';
 
 export interface HudPrompt {
   key: string;
@@ -38,7 +39,9 @@ export interface HudWorld {
   pings: readonly Ping[];
   frags: readonly { pos: THREE.Vector3 }[];
   prompt: HudPrompt | null;
-  hazards: readonly { x: number; z: number; r: number; label: string }[];
+  hazards: readonly Hazard[];
+  /** Countdown for the next world event (storm arrival, launch). */
+  eventTimer: EventTimer | null;
   /** Piloted drone readout (battery fraction, altitude above ground, hp fraction). */
   drone: { battery: number; altitude: number; hp: number } | null;
   /** The player's vehicle and seat (null on foot). */

@@ -259,6 +259,95 @@ export const TUNING = {
   },
 
   // ---------------------------------------------------------------------------------------------
+  // Dynamic events: the ion storm and the launch sequence
+  events: {
+    storm: {
+      /** Seconds into the round for the first storm (random in the range) and the chance of a second. */
+      firstAt: [210, 330] as [number, number],
+      secondAt: [760, 900] as [number, number],
+      secondChance: 0.5,
+      warnSeconds: 20,
+      speed: 8.5,
+      /** Length of the crossing (the storm fades at the far edge). */
+      maxSeconds: 150,
+      /** Pull radius, lift core and damage core. */
+      pullRadius: 60,
+      liftRadius: 22,
+      coreRadius: 9,
+      pull: 9,
+      swirl: 7,
+      lift: 15,
+      maxLiftHeight: 34,
+      coreDps: 22,
+      vehiclePull: 7,
+      vehicleLift: 7,
+      vehicleDps: 35,
+      /** Destructibles inside this radius are torn off at this damage per second. */
+      tearRadius: 30,
+      tearDps: 140,
+      /** Lightning: strikes per second, strike radius around the storm, damage and blast radius. */
+      strikesPerSecond: 1.6,
+      strikeRadius: 120,
+      strikeDamage: 55,
+      strikeBlast: 5,
+      strikeVehicleDamage: 140,
+      /** Visibility: fog closes in within visRadius (fog far at the core). */
+      visRadius: 280,
+      fogFar: 120,
+      fogNear: 8,
+      /** Rain band that runs ahead of the storm. */
+      rainAhead: 140,
+      rainRadius: 300,
+      height: 140,
+      /** Bots run from the storm inside this radius. */
+      botAvoid: 75,
+      /** Squads avoid objectives the storm is about to cross (added threat). */
+      zoneThreat: 12,
+    },
+    launch: {
+      at: [560, 720] as [number, number],
+      countdown: 60,
+      ignitionSeconds: 6,
+      accel: 9,
+      /** Exhaust blast under the rocket while the engines burn. */
+      blastRadius: 30,
+      blastDps: 70,
+      blastPush: 14,
+      /** Detonation when the fuel farm was destroyed. */
+      detonateRadius: 46,
+      detonateDamage: 320,
+      detonateVehicleDamage: 1800,
+      rubblePieces: 9,
+      botAvoidBefore: 12,
+      zoneThreat: 12,
+    },
+    /** --events=fast (tests): storm and launch soon after the round starts. */
+    fast: { storm: 25, launch: 80 },
+  },
+
+  // ---------------------------------------------------------------------------------------------
+  // Time of day and weather
+  weather: {
+    /** Day drift: 0 afternoon, 0.5 sunset, 1 dusk, across dayLength seconds of a round. */
+    dayStart: 0.12,
+    dayEnd: 0.95,
+    dayLength: 1200,
+    skyRefresh: 0.25,
+    /** Wind: base speed, gust swing and direction drift (radians per second). */
+    windBase: 4,
+    windGust: 3,
+    windDrift: 0.01,
+    /** Dust motes and rain streaks around the camera. */
+    dustCount: 420,
+    dustBox: 60,
+    rainCount: 1600,
+    rainBox: 46,
+    rainSpeed: 34,
+    /** Light drizzle anywhere while a storm is on the map. */
+    drizzle: 0.15,
+  },
+
+  // ---------------------------------------------------------------------------------------------
   // Gadgets (expanded in M8)
   gadgets: {
     grapple: { range: 45, pullSpeed: 21, cooldown: 9 },

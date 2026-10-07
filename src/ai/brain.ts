@@ -172,6 +172,17 @@ export class BotBrain {
     }
   }
 
+  /** Runs away from a hazard (storm, launch blast) for a few seconds. */
+  evadeFrom(x: number, z: number, seconds: number, w: BotWorld): void {
+    if (this.s.inVehicle) return;
+    this.evadeDir.set(this.s.pos.x - x, 0, this.s.pos.z - z);
+    if (this.evadeDir.lengthSq() < 0.01) this.evadeDir.set(w.rng.range(-1, 1), 0, w.rng.range(-1, 1));
+    this.evadeDir.normalize();
+    this.evadeT = seconds;
+    this.mode = 'evade';
+    this.leaveCover(w);
+  }
+
   // ------------------------------------------------------------------------------------------
   tick(dt: number, w: BotWorld): void {
     const s = this.s;

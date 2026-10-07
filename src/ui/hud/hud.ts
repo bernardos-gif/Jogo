@@ -61,6 +61,9 @@ export class Hud {
   readonly comms: CommsRose;
   readonly tablet: Tablet;
   readonly vehicleHud: VehicleHud;
+  private evTimer: HTMLDivElement;
+  private evLabel = h('span', { class: 'label' });
+  private evNum = h('span', { class: 'num' });
   scoreboard: Scoreboard;
   fullMap: FullMap | null = null;
   /** Seconds left of the heavy-damage glitch. */
@@ -96,6 +99,8 @@ export class Hud {
     this.comms = new CommsRose(this.root);
     this.tablet = new Tablet(this.root);
     this.vehicleHud = new VehicleHud(this.root);
+    this.evTimer = h('div', { class: 'event-timer chip brackets hidden' }, this.evLabel, this.evNum);
+    this.root.appendChild(this.evTimer);
     this.droneBat = h('i');
     this.droneAlt = h('div', { class: 'num dr-alt' });
     this.droneEl = h(
@@ -182,6 +187,14 @@ export class Hud {
     if (w) {
       this.fullMap?.update(f.dt, w);
       this.topbar.update(w);
+      const et = w.eventTimer;
+      toggle(this.evTimer, 'hidden', !et);
+      if (et) {
+        setText(this.evLabel, et.label);
+        const s = Math.ceil(et.seconds);
+        setText(this.evNum, `T-${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+        this.evTimer.dataset.tone = et.tone;
+      }
     }
     const visible = p.alive;
     this.root.classList.toggle('hidden', !visible);

@@ -79,13 +79,32 @@ export class Minimap {
     // Hazards.
     for (const hz of w.hazards) {
       const [u, v] = at(hz.x, hz.z);
+      // Warning cone along the hazard's path.
+      if (hz.dir !== undefined && hz.reach) {
+        const fx = -Math.sin(hz.dir), fz = -Math.cos(hz.dir);
+        const rx = -fz, rz = fx;
+        const L = hz.reach * s, R0 = hz.r * s, R1 = hz.r * 1.6 * s;
+        ctx.beginPath();
+        ctx.moveTo(u + rx * R0, v + rz * R0);
+        ctx.lineTo(u + fx * L + rx * R1, v + fz * L + rz * R1);
+        ctx.lineTo(u + fx * L - rx * R1, v + fz * L - rz * R1);
+        ctx.lineTo(u - rx * R0, v - rz * R0);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(u, v, u + fx * L, v + fz * L);
+        g.addColorStop(0, 'rgba(255,179,64,0.3)');
+        g.addColorStop(1, 'rgba(255,179,64,0)');
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
       ctx.beginPath();
       ctx.arc(u, v, hz.r * s, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,179,64,0.16)';
+      ctx.fillStyle = hz.danger ? 'rgba(255,68,88,0.2)' : 'rgba(255,179,64,0.16)';
       ctx.fill();
-      ctx.strokeStyle = this.c.amber;
+      ctx.strokeStyle = hz.danger ? this.c.foe : this.c.amber;
       ctx.lineWidth = 1.5 * dpr;
+      ctx.setLineDash(hz.danger ? [] : [4 * dpr, 3 * dpr]);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
     // Objectives (drawn upright, clamped to the edge).
     const lim = Math.min(W, H) / 2 - 12 * dpr;

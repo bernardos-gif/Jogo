@@ -612,3 +612,21 @@ function boundary(s: Soldier, dt: number, ctx: MovementContext): void {
 export function renderPos(s: Soldier, alpha: number, out: THREE.Vector3): THREE.Vector3 {
   return out.copy(s.prevPos).lerp(s.pos, alpha);
 }
+
+/** External push (storm winds, blasts): adds velocity and lifts the soldier off the ground when pushed upward. */
+export function fling(s: Soldier, dx: number, dy: number, dz: number): void {
+  if (!s.alive || s.inVehicle || s.state === 'ladder' || s.state === 'zipline' || s.state === 'mantle' || s.state === 'dead') return;
+  s.vel.x += dx;
+  s.vel.z += dz;
+  if (dy > 0 && !s.downed) {
+    if (s.state !== 'air' && s.state !== 'parachute' && s.state !== 'wingsuit') {
+      s.state = 'air';
+      s.airT = 0;
+      s.minVy = 0;
+      s.vel.y = Math.max(0, s.vel.y);
+    }
+    s.vel.y += dy;
+    // Fall damage counts from where the push lets go.
+    s.fallStartY = s.pos.y;
+  }
+}

@@ -15,7 +15,7 @@ const flag = (name: string): string | null => {
 };
 
 const forwarded: Record<string, string> = {};
-for (const name of ['autoplay', 'smoke', 'soak', 'mode', 'seed', 'preset', 'size', 'bots', 'scene', 'cam', 'spectate', 'tickets', 'tp']) {
+for (const name of ['autoplay', 'smoke', 'soak', 'mode', 'seed', 'preset', 'size', 'bots', 'scene', 'cam', 'spectate', 'tickets', 'tp', 'events']) {
   const v = flag(name);
   if (v !== null) forwarded[name] = v;
 }

@@ -23,7 +23,7 @@ export interface TacMapState {
   units: readonly MapUnit[];
   time: number;
   /** Warning cone or circle (events), world meters. */
-  hazards?: readonly { x: number; z: number; r: number }[];
+  hazards?: readonly { x: number; z: number; r: number; dir?: number; reach?: number; danger?: boolean }[];
 }
 
 interface Palette {
@@ -150,11 +150,33 @@ export class TacticalMapView {
     if (st.hazards)
       for (const hz of st.hazards) {
         const [u, v] = this.toPx(hz.x, hz.z);
+        if (hz.dir !== undefined && hz.reach) {
+          // Warning cone along the hazard's path (corners in world space, then to pixels).
+          const fx = -Math.sin(hz.dir), fz = -Math.cos(hz.dir);
+          const rx = -fz, rz = fx;
+          const ex = hz.x + fx * hz.reach, ez = hz.z + fz * hz.reach;
+          const pts = [
+            this.toPx(hz.x + rx * hz.r, hz.z + rz * hz.r),
+            this.toPx(ex + rx * hz.r * 1.6, ez + rz * hz.r * 1.6),
+            this.toPx(ex - rx * hz.r * 1.6, ez - rz * hz.r * 1.6),
+            this.toPx(hz.x - rx * hz.r, hz.z - rz * hz.r),
+          ];
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (const q of pts.slice(1)) ctx.lineTo(q[0], q[1]);
+          ctx.closePath();
+          const [eu, ev] = this.toPx(ex, ez);
+          const g = ctx.createLinearGradient(u, v, eu, ev);
+          g.addColorStop(0, 'rgba(255,179,64,0.32)');
+          g.addColorStop(1, 'rgba(255,179,64,0)');
+          ctx.fillStyle = g;
+          ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(u, v, hz.r * s, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,179,64,0.14)';
+        ctx.fillStyle = hz.danger ? 'rgba(255,68,88,0.18)' : 'rgba(255,179,64,0.14)';
         ctx.fill();
-        ctx.strokeStyle = P.amber;
+        ctx.strokeStyle = hz.danger ? P.foe : P.amber;
         ctx.lineWidth = 1.5 * dpr;
         ctx.stroke();
       }

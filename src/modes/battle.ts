@@ -36,6 +36,8 @@ import type { MapBuild } from '../world/maps/mapBuild';
 import { Destructibles, type Destructible } from '../world/destruction';
 import { Water } from '../world/water';
 import { Rocket } from '../world/rocket';
+import { WorldEvents, type EventHost, type Hazard } from '../world/events';
+import { WeatherFx } from '../world/weather';
 import { captureTacticalMap, type TacticalImage } from '../render/tacticalMap';
 import { Pings, type PingKind } from '../net-sim/pings';
 import { GadgetSystem, type GadgetContext } from '../gadgets/system';
@@ -68,7 +70,7 @@ const _v2 = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const makeHitTmp = makeHit();
 
-export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, VehicleContext {
+export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, VehicleContext, EventHost {
   readonly scene = new THREE.Scene();
   readonly physics: Physics;
   readonly collision = new CollisionWorld();
@@ -96,6 +98,10 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
   /** 0 afternoon .. 1 dusk. */
   dayT = 0.5;
   storm = 0;
+  /** Dynamic events (ion storm, launch sequence), wind and the day drift. */
+  readonly world: WorldEvents;
+  private weather: WeatherFx;
+  private skyT = 0;
   private skyState: SkyState = newSkyState();
   private stepInFrame = 0;
   private nextId = 1;
@@ -211,6 +217,9 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     if (map.hqs) this.vehicles.setupPads(map.hqs, (x, z) => this.terrain.heightAt(x, z));
     this.vehicles.reset(this);
     this.callIns.onLand = (kind, team, pos, yaw) => this.vehicles.spawn(kind, team, pos, yaw, this.physics);
+    this.world = new WorldEvents(this, flags.events === 'fast');
+    this.world.enabled = !!map.hqs;
+    this.weather = new WeatherFx(this.scene, q.particleScale);
 
     this.moveCtx = {
       physics: this.physics,
@@ -592,6 +601,10 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     this.callIns.clear();
     this.vehicles.reset(this);
     this.ai.crews.clear();
+    this.world.reset();
+    this.dayT = this.world.dayT;
+    this.storm = 0;
+    this.applySky();
     for (const s of this.soldiers) s.piloting = false;
     this.hud?.clearTransient();
   }
@@ -797,6 +810,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
       frags: this.throwables.near(p.pos, TUNING.ui.grenadeIndicatorRange),
       prompt: this.interactPrompt(p),
       hazards: this.hazards,
+      eventTimer: this.world.timer(),
       drone: this.droneReadout(p),
       vehicle: this.vehicleView(p),
       vehicles: this.vehicles.list.filter((v) => v.alive).map((v) => ({ x: v.pos.x, z: v.pos.z, yaw: v.yaw, team: v.team, kind: v.kind, crewed: v.crewCount > 0, aircraft: v.aircraft })),
@@ -856,7 +870,25 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
   }
 
   /** Hazard zones shown on the maps (dynamic events add them). */
-  hazards: { x: number; z: number; r: number; label: string }[] = [];
+  get hazards(): readonly Hazard[] {
+    return this.world.hazards;
+  }
+
+  zoneThreat(x: number, z: number): number {
+    return this.world.zoneThreat(x, z);
+  }
+
+  /** Objective centers the storm aims to pass near (the middle sectors). */
+  stormTargets(): readonly { x: number; z: number }[] {
+    const zones = this.mode?.hudInfo?.()?.zones ?? [];
+    const mid = zones.filter((z) => Math.abs(z.z) < 260);
+    return (mid.length ? mid : zones).map((z) => ({ x: z.x, z: z.z }));
+  }
+
+  shakeAt(pos: THREE.Vector3, amount: number, radius: number): void {
+    const d = this.fp.camera.position.distanceTo(pos);
+    if (d < radius) this.fp.addTrauma(amount * (1 - d / radius));
+  }
 
   scoreboardData(): ScoreboardData {
     const p = this.player;
@@ -898,6 +930,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     for (const s of this.soldiers) this.gadgets.stepSoldier(s, dt, this);
     for (const s of this.soldiers) this.vehicleSeatInput(s);
     this.vehicles.step(dt, this);
+    this.world.update(dt);
     for (const s of this.soldiers) {
       if (s.dummy && !s.alive) continue;
       if (s.inVehicle) continue;
@@ -1004,7 +1037,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     this.projectiles.render(this, alpha);
     this.throwables.render(alpha);
     this.vfx.update(frameDt);
-    this.sky.update(frameDt, this.fp.camera.position, 4);
+    this.atmosphere(frameDt, alpha);
     this.lighting.follow(this.renderPos);
     this.vfx.flushTracers();
     this.renderer.render(this.scene, this.fp.camera, this.viewmodel.scene, this.viewmodel.camera);
@@ -1095,6 +1128,20 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     this.spectateT += frameDt;
     if (flags.tp) this.spectated = this.player;
     const kind = flags.spectateKind;
+    if (kind === 'storm' || kind === 'rocket') {
+      // Watch the storm (or pad A) from a distance.
+      const target = kind === 'storm' ? this.world.stormPos : (this.rocket?.spec.base ?? this.world.stormPos);
+      const dist = kind === 'storm' ? 190 : 150;
+      const cam = this.fp.camera;
+      const a = this.time * 0.03;
+      cam.position.set(target.x + Math.cos(a) * dist, this.terrain.heightAt(target.x, target.z) + 35, target.z + Math.sin(a) * dist);
+      cam.lookAt(target.x, target.y + 55, target.z);
+      cam.updateMatrixWorld();
+      this.viewmodel.visible = false;
+      this.viewmodel.update(frameDt, cam, vm, this.renderer.aspect);
+      this.hud?.root.classList.add('hidden');
+      return;
+    }
     if (kind) {
       // Chase a bot-driven vehicle of that kind.
       const cur = this.spectated ? this.vehicles.vehicleOf(this.spectated) : null;
@@ -1172,7 +1219,30 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
     this.fp.camera.updateProjectionMatrix();
   }
 
+  /** Storm visuals, the day drift, storm fog and the weather around the camera. */
+  private atmosphere(frameDt: number, alpha: number): void {
+    const cam = this.fp.camera.position;
+    const w = this.world;
+    w.render(frameDt, alpha, cam);
+    this.skyT -= frameDt;
+    if (this.skyT <= 0 || Math.abs(w.storm - this.storm) > 0.03) {
+      this.skyT = TUNING.weather.skyRefresh;
+      this.dayT = w.dayT;
+      this.storm = w.storm;
+      this.applySky();
+    }
+    const q = this.renderer.quality;
+    const S = TUNING.events.storm;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = q.fogNear + (S.fogNear - q.fogNear) * w.fogMix;
+    fog.far = q.fogFar + (S.fogFar - q.fogFar) * w.fogMix;
+    this.weather.update(frameDt, cam, w.wind, w.rain, w.dust, this.skyState.fog);
+    this.sky.update(frameDt, cam, w.wind.length());
+  }
+
   dispose(): void {
+    this.world.dispose();
+    this.weather.dispose();
     this.mode?.dispose?.();
     this.hud?.dispose();
     this.events.clear();

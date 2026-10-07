@@ -8,7 +8,7 @@ import type { Physics } from '../physics/physics';
 import type { CollisionWorld, DynBox } from '../physics/collision';
 import type RAPIER from '@dimforge/rapier3d-compat';
 
-export type RocketPhase = 'pad' | 'ignition' | 'ascent' | 'gone';
+export type RocketPhase = 'pad' | 'ignition' | 'ascent' | 'gone' | 'destroyed';
 
 export class Rocket {
   readonly group: THREE.Group;
@@ -62,6 +62,33 @@ export class Rocket {
       }
     }
     this.group.position.set(this.spec.base.x, this.spec.base.y + this.lift, this.spec.base.z);
+  }
+
+  /** The fuel farm is gone: the rocket blows up on the pad (the wreck is the event's rubble). */
+  detonate(): void {
+    if (this.phase !== 'pad' && this.phase !== 'ignition') return;
+    this.phase = 'destroyed';
+    this.phaseT = 0;
+    this.group.visible = false;
+    this.releaseColliders();
+  }
+
+  /** Back on the pad for a new round. */
+  reset(): void {
+    this.releaseColliders();
+    this.phase = 'pad';
+    this.phaseT = 0;
+    this.lift = 0;
+    this.speed = 0;
+    this.group.visible = true;
+    this.group.position.copy(this.spec.base);
+    const body = this.spec.height * 0.86;
+    const half = new THREE.Vector3(this.spec.radius * 0.88, body / 2, this.spec.radius * 0.88);
+    const c = this.spec.base.clone().setY(this.spec.base.y + body / 2);
+    for (const ry of [0, Math.PI / 4]) {
+      this.colliders.push(this.physics.addStaticBox(c, half, ry));
+      this.boxes.push(this.collision.addBox(c, half, ry, 'metal', 'prop', this, { opaque: true }));
+    }
   }
 
   /** World position of the engine bells (for exhaust effects). */

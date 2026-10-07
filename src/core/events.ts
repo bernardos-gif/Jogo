@@ -30,6 +30,8 @@ export interface GameEvents {
   destruct: { pos: THREE.Vector3; kind: string };
   vehicleDestroyed: { pos: THREE.Vector3; kind: string; killer: Soldier | null };
   lightning: { pos: THREE.Vector3 };
+  /** Dynamic world events: the ion storm (warn, active, end) and the launch (countdown, ignition, liftoff, detonated). */
+  worldEvent: { kind: 'storm' | 'launch'; phase: string; pos: THREE.Vector3 };
   ui: { sound: string };
 }
 

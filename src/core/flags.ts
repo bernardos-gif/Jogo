@@ -26,6 +26,8 @@ export interface LaunchFlags {
   tp: boolean;
   /** Test override for the starting ticket count (short rounds). */
   tickets: number | null;
+  /** --events=fast: the storm and the launch come early (tests and soak runs). */
+  events: 'fast' | null;
 }
 
 function parse(search: string): LaunchFlags {
@@ -53,6 +55,7 @@ function parse(search: string): LaunchFlags {
     spectateKind: q.get('spectate') && !['1', 'true', ''].includes(q.get('spectate')!) ? q.get('spectate') : null,
     tp: on('tp'),
     tickets: num('tickets'),
+    events: q.get('events') === 'fast' ? 'fast' : null,
   };
 }
 

@@ -1804,3 +1804,33 @@
   color: var(--cyan);
   background: rgba(0, 20, 30, 0.5);
 }
+
+/* ---- World event countdown (storm arrival, launch) --------------------------------------- */
+.event-timer {
+  position: absolute;
+  left: 50%;
+  top: 132px;
+  transform: translateX(-50%) scale(var(--hud-scale));
+  transform-origin: top center;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 12px;
+  background: var(--glass);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+.event-timer .label {
+  color: var(--amber);
+}
+.event-timer .num {
+  font-size: var(--fs-15);
+}
+.event-timer[data-tone='bad'] {
+  border-color: var(--red);
+  color: var(--red);
+  animation: blink 1s steps(2) infinite;
+}
+.event-timer[data-tone='bad'] .label {
+  color: var(--red);
+}

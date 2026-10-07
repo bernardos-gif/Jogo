@@ -54,6 +54,7 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
   let shot = 0;
   // The smoke run also walks the player through death, the deploy screen and the end of round.
   const acts = soak ? [] : [
+    { at: 0.04, name: 'storm' },
     { at: 0.08, name: 'showcase' },
     { at: 0.1, name: 'callin' },
     { at: 0.12, name: 'scoreboard' },
@@ -104,4 +105,5 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
   expect(stats.soldiers).toBeGreaterThanOrEqual(TUNING.sector.teamSizeMin * 2);
   if (!soak) for (const f of ['playing', 'killcam', 'deploy', 'end']) expect(stats.flowVisited, `flow state ${f}`).toContain(f);
   if (!soak) expect(stats.vehiclesUsed).toBeGreaterThan(0);
+  if (!soak) expect(stats.stormEvents).toBeGreaterThan(0);
 });

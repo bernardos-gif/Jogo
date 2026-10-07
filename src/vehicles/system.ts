@@ -376,6 +376,16 @@ export class VehicleSystem implements RayTargetSet {
     this.apply(v);
   }
 
+  /** External push (storm winds): adds velocity on top of the drive for this tick. */
+  push(v: Vehicle, dx: number, dy: number, dz: number): void {
+    if (!v.alive) return;
+    v.vel.x += dx;
+    v.vel.y += dy;
+    v.vel.z += dz;
+    v.body.setLinvel({ x: v.vel.x, y: v.vel.y, z: v.vel.z }, true);
+    this.intended.get(v.id)?.copy(v.vel);
+  }
+
   /** Pushes the intended velocity and rotation into the rigid body. */
   private apply(v: Vehicle): void {
     v.body.setLinvel({ x: v.vel.x, y: v.vel.y, z: v.vel.z }, true);

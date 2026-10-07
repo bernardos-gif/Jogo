@@ -373,7 +373,7 @@ export class App {
       tickets: this.battle?.mode instanceof SectorMode ? [Math.round(this.battle.mode.tickets.tickets[0]), Math.round(this.battle.mode.tickets.tickets[1])] : [0, 0],
       vehiclesUsed: this.battle ? this.battle.callIns.requests + this.battle.vehicles.entries : 0,
       gadgetsUsed: this.battle?.gadgets.uses ?? 0,
-      stormEvents: 0,
+      stormEvents: this.battle?.world.storms ?? 0,
       flowVisited: [...this.flowVisited],
       notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : '', this.battle.vehicles.list.map((v) => `${v.kind}${v.team}:${v.crewCount}:${Math.round(v.hp)}@${Math.round(v.pos.x)},${Math.round(v.pos.y)},${Math.round(v.pos.z)}${v.alive ? '' : 'X'}`).join(' '), this.battle.ai.crews.debugLine(this.battle.ai.brains)] : [],
     };
@@ -410,6 +410,13 @@ export class App {
       return b.vehicles.enter(p, v, 0);
     }
     if (name === 'exitVehicle') return p.inVehicle && b.vehicles.exit(p, b, true);
+    if (name === 'storm') return b.world.forceStorm();
+    if (name === 'launch') return b.world.forceLaunch();
+    if (name === 'blowFuel') {
+      // Destroys the fuel farm so the launch detonates.
+      for (const d of b.destructibles.items) if (d.tag === 'rocketFuel' && d.alive) b.destructibles.destroy(d);
+      return true;
+    }
     if (name === 'showcase') {
       if (!p.alive) return false;
       b.gadgets.showcase(p, b);

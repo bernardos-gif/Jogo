@@ -10,7 +10,11 @@ on:
       tag:
         description: Tag to publish (created on the selected commit if it does not exist)
         required: true
-        default: v1.0.0
+        default: v1.0.1
+      replaces:
+        description: Older release to delete once this one is published (optional, keeps its tag)
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -43,6 +47,28 @@ jobs:
           lipo -info "release/mac-universal/Vector Front.app/Contents/MacOS/Vector Front"
           ls -la release/*.dmg
 
+      # Mount the DMG, copy the app out the way a drag to Applications does, check the copy carries
+      # no code-signature attributes, then make sure it starts and keeps running.
+      - name: Install and launch check
+        run: |
+          MNT="$RUNNER_TEMP/vf-dmg"
+          hdiutil attach release/*.dmg -nobrowse -readonly -mountpoint "$MNT"
+          cp -R "$MNT/Vector Front.app" "$RUNNER_TEMP/"
+          hdiutil detach "$MNT"
+          APP="$RUNNER_TEMP/Vector Front.app"
+          if xattr -lr "$APP" | grep -q 'com.apple.cs.'; then echo "signature attributes found"; xattr -lr "$APP" | grep 'com.apple.cs.'; exit 1; fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          "$APP/Contents/MacOS/Vector Front" --smoke --autoplay > "$RUNNER_TEMP/launch.log" 2>&1 &
+          PID=$!
+          sleep 25
+          if kill -0 "$PID" 2>/dev/null; then
+            echo "The app is running after 25 s."
+            kill "$PID"
+          else
+            wait "$PID"; CODE=$?
+            echo "The app exited early with code $CODE"; cat "$RUNNER_TEMP/launch.log"; exit 1
+          fi
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -50,5 +76,9 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/*.dmg --clobber
           else
-            gh release create "$TAG" release/*.dmg --target "$GITHUB_SHA" --title "Vector Front ${TAG#v}" --notes-file .github/release-notes.md
+            gh release create "$TAG" release/*.dmg --target "$GITHUB_SHA" --title "Vector Front ${TAG#v}" --notes-file .github/release-notes.md --latest
+          fi
+          OLD="${{ github.event.inputs.replaces }}"
+          if [ -n "$OLD" ] && [ "$OLD" != "$TAG" ] && gh release view "$OLD" >/dev/null 2>&1; then
+            gh release delete "$OLD" --yes
           fi

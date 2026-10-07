@@ -124,4 +124,6 @@ One line per choice. Newest entries are appended at the end of each section.
 - Bot pilots keep 2.5 storm pull radii away from the ion storm; ground bots run from it inside 75 m.
 - The Wisp's roll cage is tall enough that first-person cameras in its seats sit under the top rails.
 - The packaged app is ad-hoc signed (no Apple Developer ID or notarization is available here), so the first launch needs System Settings → Privacy & Security → Open Anyway, as the README explains.
+- macOS packaging signs the app as one bundle (`codesign --deep`, ad-hoc) after clearing every extended attribute, and builds the DMG with `hdiutil`. electron-builder's own signing signed data files one by one, which leaves `com.apple.cs.*` attributes on them; Finder cannot copy those, and dragging 1.0.0 to Applications failed with error -36. The build now mounts its own DMG, copies the app out and verifies the copy before it counts as done.
+- Releases are built and published by `.github/workflows/release.yml` on a macOS runner (push a `v*` tag or run the workflow with a tag name).
 

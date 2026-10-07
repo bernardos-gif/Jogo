@@ -1,6 +1,11 @@
 // Packages the universal (Apple Silicon + Intel) macOS .dmg into ./release.
 //
-// macOS: electron-builder does everything natively (universal merge, ad-hoc signing, hdiutil DMG).
+// macOS: electron-builder builds and merges the universal .app without signing; then every extended
+// attribute is cleared, one ad-hoc signature covers the whole bundle (codesign --deep), hdiutil makes
+// the DMG, and the DMG is mounted and the app copied out the way Finder does to prove it installs.
+// (electron-builder's own signing also signs data files such as app.asar one by one, which stores
+// com.apple.cs.* extended attributes on them; Finder cannot write those on the copy and the drag to
+// Applications fails with error -36.)
 // Linux: electron-builder builds the x64 and arm64 .app bundles, @electron/universal merges them
 // (needs `lipo` or `llvm-lipo`), rcodesign applies an ad-hoc signature, and xorrisofs plus the
 // libdmg-hfsplus `dmg` tool produce a compressed UDIF image.
@@ -39,9 +44,69 @@ if (!existsSync(join(ROOT, 'dist', 'index.html')) || !existsSync(join(ROOT, 'dis
 }
 if (!existsSync(join(ROOT, 'build', 'icon.png'))) run('node', ['scripts/make-icon.mjs']);
 
+/** The short note that ships next to the app in the DMG. */
+function writeNote(dir) {
+  writeFileSync(
+    join(dir, 'How to open.txt'),
+    [
+      'VECTOR FRONT',
+      '',
+      '1. Drag "Vector Front" onto the Applications folder.',
+      '2. The app is ad-hoc signed and not notarized. The first time you open it:',
+      '   double-click it once, then open System Settings > Privacy & Security,',
+      '   scroll down and click "Open Anyway" next to Vector Front, and confirm.',
+      '',
+      'Fullscreen: Cmd+Ctrl+F (or F11). Full controls are on the Controls screen.',
+      '',
+    ].join('\n'),
+  );
+}
+
+/** Lines of `xattr -lr` output that carry code-signature attributes (they break Finder copies). */
+function signatureXattrs(path) {
+  const r = spawnSync('xattr', ['-lr', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return (r.stdout ?? '').split('\n').filter((l) => l.includes('com.apple.cs.'));
+}
+
 if (process.platform === 'darwin') {
-  run(BUILDER, ['--mac', 'dmg', '--universal', '--publish', 'never']);
-  console.log(`\nDone. The DMG is in ${RELEASE}`);
+  const app = join(RELEASE, 'mac-universal', `${PRODUCT}.app`);
+  rmSync(join(RELEASE, 'mac-universal'), { recursive: true, force: true });
+  // 1) Universal .app, unsigned.
+  run(BUILDER, ['--mac', 'dir', '--universal', '--publish', 'never', '-c.mac.identity=null']);
+  if (!existsSync(app)) throw new Error(`electron-builder did not produce ${app}`);
+  // 2) No extended attributes anywhere, then one ad-hoc signature sealing the whole bundle.
+  run('xattr', ['-cr', app]);
+  run('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none', app]);
+  run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
+  const left = signatureXattrs(app);
+  if (left.length) throw new Error(`Code-signature attributes left on files:\n${left.join('\n')}`);
+  // 3) DMG: the app, an Applications shortcut and a short note, HFS+ compressed with zlib.
+  const stage = join(RELEASE, '.dmg-stage');
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+  run('ditto', ['--noextattr', '--noqtn', app, join(stage, `${PRODUCT}.app`)]);
+  symlinkSync('/Applications', join(stage, 'Applications'));
+  writeNote(stage);
+  const out = join(RELEASE, DMG_NAME);
+  rmSync(out, { force: true });
+  run('hdiutil', ['create', '-volname', PRODUCT, '-srcfolder', stage, '-fs', 'HFS+', '-format', 'UDZO', '-imagekey', 'zlib-level=9', '-ov', out]);
+  rmSync(stage, { recursive: true, force: true });
+  // 4) Install check: mount the DMG, copy the app out like Finder, verify the copy.
+  const mnt = join(tmpdir(), `vf-dmg-${process.pid}`);
+  const dest = join(tmpdir(), `vf-install-${process.pid}`);
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dest, { recursive: true });
+  run('hdiutil', ['attach', out, '-nobrowse', '-readonly', '-mountpoint', mnt]);
+  try {
+    run('ditto', [join(mnt, `${PRODUCT}.app`), join(dest, `${PRODUCT}.app`)]);
+    run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', join(dest, `${PRODUCT}.app`)]);
+    const bad = signatureXattrs(join(mnt, `${PRODUCT}.app`));
+    if (bad.length) throw new Error(`The DMG's app still carries code-signature attributes:\n${bad.join('\n')}`);
+  } finally {
+    run('hdiutil', ['detach', mnt, '-force']);
+    rmSync(dest, { recursive: true, force: true });
+  }
+  console.log(`\nDone: ${out} (${(statSync(out).size / 1048576).toFixed(1)} MB)`);
   process.exit(0);
 }
 
@@ -88,20 +153,7 @@ const stage = join(WORK, 'dmg');
 mkdirSync(stage, { recursive: true });
 run('cp', ['-a', uniApp, stage]);
 symlinkSync('/Applications', join(stage, 'Applications'));
-writeFileSync(
-  join(stage, 'How to open.txt'),
-  [
-    'VECTOR FRONT',
-    '',
-    '1. Drag "Vector Front" onto the Applications folder.',
-    '2. The app is ad-hoc signed and not notarized. The first time you open it:',
-    '   double-click it once, then open System Settings > Privacy & Security,',
-    '   scroll down and click "Open Anyway" next to Vector Front, and confirm.',
-    '',
-    'Fullscreen: Cmd+Ctrl+F (or F11). Full controls are on the Controls screen.',
-    '',
-  ].join('\n'),
-);
+writeNote(stage);
 
 // 5) ISO9660 + Rock Ridge (keeps the symlink and permissions), then compress to UDIF.
 need('xorrisofs', 'Ubuntu: apt-get install xorriso');

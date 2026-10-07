@@ -18,7 +18,7 @@ npm run dev        # Vite dev server + Electron window (the printed URL also wor
 npm run build      # typecheck, production build, universal .dmg in ./release
 ```
 
-`npm run build` writes `release/Vector-Front-1.0.0-universal.dmg`. It holds a single app that runs natively on Apple Silicon and Intel Macs.
+`npm run build` writes `release/Vector-Front-1.0.1-universal.dmg`. It holds a single app that runs natively on Apple Silicon and Intel Macs.
 
 ### Opening the app (it is not signed by Apple)
 
@@ -150,5 +150,6 @@ tests/        unit tests and the Playwright smoke/soak harness
 ## Troubleshooting
 
 - **The app does not open:** follow the Privacy & Security steps above. The app is ad-hoc signed only.
+- **"Error code -36" when dragging the app to Applications:** that was a packaging bug in 1.0.0. Download 1.0.1 or later.
 - **Low frame rate:** pick a lower preset or turn down the resolution scale. Dynamic resolution is on by default.
 - **No sound:** check the in-game Audio volumes and the macOS output device. In the browser build, sound starts after the first click or key press.

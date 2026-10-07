@@ -12,4 +12,4 @@
 - **Sector Control**: capture and hold sectors A to E; the team holding fewer sectors bleeds tickets.
 - **Skirmish**: 8 v 8 infantry around Core Plaza, first team to 100 kills.
 
-Controls, settings and build instructions are in the [README](https://github.com/bernardos-gif/Jogo/blob/v1.0.0/README.md).
+Controls, settings and build instructions are in the [README](https://github.com/bernardos-gif/Jogo/blob/v1.0.1/README.md).

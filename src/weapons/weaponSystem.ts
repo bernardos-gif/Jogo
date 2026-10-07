@@ -30,6 +30,8 @@ export interface WeaponContext extends CombatContext {
   resolveShot?(s: Soldier, st: WeaponState['stats'], origin: THREE.Vector3, dir: THREE.Vector3): boolean;
   /** Passive scaling of the sprint-to-fire delay. */
   sprintToFireMul?(s: Soldier): number;
+  /** True when a mounted soldier fires their own weapons (open passenger seats). */
+  personalWeaponSeat?(s: Soldier): boolean;
 }
 
 const _dir = new THREE.Vector3();
@@ -66,7 +68,7 @@ export class WeaponSystem {
       a.throwables++;
     }
     this.coolHeat(a, dt, ctx);
-    if (!s.active || s.inVehicle) {
+    if (!s.active || (s.inVehicle && !ctx.personalWeaponSeat?.(s))) {
       a.adsK = 0;
       w.reloadT = -1;
       return;

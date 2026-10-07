@@ -9,7 +9,7 @@ const app = await electron.launch({ args });
 const page = await app.firstWindow();
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+page.on("pageerror", (e) => errors.push(`pageerror: ${e.stack ?? e.message}`));
 await page.waitForFunction(() => window.__vf?.state === 'playing', null, { timeout: 240000 });
 const end = Date.now() + Number(minutes) * 60000;
 while (Date.now() < end) {

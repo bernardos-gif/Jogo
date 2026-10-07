@@ -20,6 +20,8 @@ export interface LaunchFlags {
   cam: number[] | null;
   /** Debug: third-person camera that follows a bot in a firefight. */
   spectate: boolean;
+  /** Debug: with --spectate=<vehicle kind> (or 'vehicle') the camera chases a bot-driven vehicle. */
+  spectateKind: string | null;
   /** Debug: third-person camera behind the player. */
   tp: boolean;
   /** Test override for the starting ticket count (short rounds). */
@@ -48,6 +50,7 @@ function parse(search: string): LaunchFlags {
     scene: q.get('scene'),
     cam: q.get('cam') ? q.get('cam')!.split(',').map(Number) : null,
     spectate: on('spectate'),
+    spectateKind: q.get('spectate') && !['1', 'true', ''].includes(q.get('spectate')!) ? q.get('spectate') : null,
     tp: on('tp'),
     tickets: num('tickets'),
   };

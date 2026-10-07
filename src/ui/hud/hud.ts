@@ -17,6 +17,7 @@ import { DamageArcs, GrenadeWarnings, CaptureRing, Prompt, AmmoCue } from './ind
 import { WorldMarkers } from './markers';
 import { CommsRose } from './comms';
 import { Tablet } from './tablet';
+import { VehicleHud } from './vehicleHud';
 import { Scoreboard, type ScoreboardData } from '../screens/scoreboard';
 import { FullMap } from '../screens/fullmap';
 import type { HudWorld } from './types';
@@ -59,6 +60,7 @@ export class Hud {
   readonly markers: WorldMarkers;
   readonly comms: CommsRose;
   readonly tablet: Tablet;
+  readonly vehicleHud: VehicleHud;
   scoreboard: Scoreboard;
   fullMap: FullMap | null = null;
   /** Seconds left of the heavy-damage glitch. */
@@ -93,6 +95,7 @@ export class Hud {
     this.attachments = new AttachmentMenu(this.root);
     this.comms = new CommsRose(this.root);
     this.tablet = new Tablet(this.root);
+    this.vehicleHud = new VehicleHud(this.root);
     this.droneBat = h('i');
     this.droneAlt = h('div', { class: 'num dr-alt' });
     this.droneEl = h(
@@ -191,6 +194,10 @@ export class Hud {
       this.droneBat.style.width = `${(dr.battery * 100).toFixed(0)}%`;
       setText(this.droneAlt, `ALT ${Math.round(dr.altitude)} m · HULL ${Math.round(dr.hp * 100)}%`);
     }
+    const veh = w?.vehicle ?? null;
+    toggle(this.root, 'in-vehicle', !!veh && !veh.personal);
+    toggle(this.root, 'no-weapon', !!veh && !veh.personal && !veh.mount);
+    this.vehicleHud.update(veh, f.time);
     const wpn = f.arsenal.current;
     this.scope.update(f.scoped, wpn.att.sight, f.zoom, f.rangeM, f.time);
     this.crosshair.update(f.dt, f.spread, f.vfov, f.screenH, wpn.stats.category, f.arsenal.adsK, !f.scoped && !this.attachments.open && !this.comms.open && !this.tablet.open && p.active, f.enemyUnderCrosshair);

@@ -292,6 +292,69 @@ export const TUNING = {
   },
 
   // ---------------------------------------------------------------------------------------------
+  // Vehicles (arcade handling; hover vehicles ride four raycast springs)
+  vehicles: {
+    wisp: {
+      hp: 900, mass: 1400, maxSpeed: 31, reverseSpeed: 10, accel: 14, brake: 26, turnRate: 1.9, grip: 6.5, drag: 0.35,
+      hoverHeight: 0.75, spring: 38, damping: 7, tilt: 0.12,
+      respawn: 45,
+    },
+    basalt: {
+      hp: 2600, mass: 9000, maxSpeed: 14, reverseSpeed: 6, accel: 5, brake: 12, turnRate: 0.75, grip: 9, drag: 0.6,
+      hoverHeight: 0.85, spring: 30, damping: 7, tilt: 0.08,
+      turretSpeed: 0.75, barrelMin: -0.14, barrelMax: 0.38,
+      respawn: 90,
+    },
+    condor: {
+      hp: 1700, mass: 6000, hoverSpeed: 16, forwardSpeed: 46, climb: 11, yawRate: 1.1, pitchRate: 1.3, maxPitch: 0.45, maxRoll: 0.5, accel: 6, minAltitude: 3,
+      chinSpeed: 1.6, chinPitchMin: -1.1, chinPitchMax: 0.25,
+      respawn: 120,
+    },
+    midge: {
+      hp: 1100, mass: 2500, forwardSpeed: 40, climb: 13, yawRate: 1.7, pitchRate: 1.8, maxPitch: 0.55, maxRoll: 0.6, accel: 9, minAltitude: 2,
+      respawn: 90,
+    },
+    weapons: {
+      cannon: { damage: 140, splashDamage: 95, splashRadius: 5, vehicleDamage: 420, velocity: 260, gravityMul: 0.35, reload: 3.6 },
+      coax: { damage: [16, 11] as [number, number], rpm: 760, heatPerShot: 0.012, cool: 0.35, velocity: 1100, spread: 0.5, vehicleMul: 0.12 },
+      rockets: { salvo: 14, interval: 0.11, reload: 7, damage: 70, splashDamage: 70, splashRadius: 4, vehicleDamage: 180, velocity: 140, spread: 1.6 },
+      chin: { damage: [30, 22] as [number, number], rpm: 360, heatPerShot: 0.03, cool: 0.35, velocity: 700, spread: 0.6, splashDamage: 18, splashRadius: 1.8, vehicleMul: 0.3 },
+      minigun: { damage: [14, 9] as [number, number], rpm: 1800, heatPerShot: 0.006, cool: 0.4, velocity: 900, spread: 1.0, vehicleMul: 0.12 },
+      doorgun: { damage: [17, 12] as [number, number], rpm: 700, heatPerShot: 0.01, cool: 0.35, velocity: 950, spread: 0.7, vehicleMul: 0.1 },
+      /** Overheated mounts lock out this long. */
+      overheatLock: 2.5,
+    },
+    /** Hull damage that hits a component (engine, weapons, mobility) and how hard. */
+    componentChance: 0.45,
+    componentDamage: 0.4,
+    /** Component health below this cripples it. */
+    componentCrippled: 0.3,
+    crippledSpeedMul: 0.5,
+    crippledFireMul: 0.5,
+    /** Hull regenerates to this fraction after a quiet spell. */
+    selfRepairTo: 0.5,
+    selfRepairDelay: 8,
+    selfRepairRate: 25,
+    /** Burning below this hull fraction, losing hp per second. */
+    burnBelow: 0.12,
+    burnRate: 35,
+    explosion: { radius: 9, damage: 120, inner: 3, vehicleDamage: 500 },
+    wreckSeconds: 12,
+    enterRange: 4.5,
+    exitClear: 2.2,
+    /** Collisions: impact speed (m/s) that starts hurting the hull, and hp per m/s above it. */
+    crashSpeed: 10,
+    crashDamage: 16,
+    /** Run-over damage: minimum speed and damage per m/s. */
+    roadkillSpeed: 6,
+    roadkillDamage: 9,
+    countermeasures: { charges: 2, cooldown: 14, breakRadius: 60, duration: 3 },
+    /** Lock warning lasts this long after the last lock tick. */
+    lockWarnHold: 0.3,
+    camera: { thirdDistance: { wisp: 7, basalt: 10, condor: 15, midge: 11 } as Record<string, number>, thirdHeight: { wisp: 2.8, basalt: 4, condor: 4.5, midge: 3.2 } as Record<string, number>, lerp: 8 },
+  },
+
+  // ---------------------------------------------------------------------------------------------
   // Call-in tablet: vehicle airdrops with per-team cooldowns
   callins: {
     holdToOpen: 0.15,
@@ -560,6 +623,73 @@ export const TUNING = {
       burstModeMul: 1.6,
       flankArrive: 15,
     },
+    /** Bot vehicle crews. */
+    crews: {
+      /** Bots look for a vehicle to board within this radius, and walk to it for up to boardTimeout seconds. */
+      enterRange: 30,
+      boardTimeout: 14,
+      boardCheck: 1.5,
+      /** Trips shorter than this go on foot (passengers join a squadmate's vehicle above joinTrip). */
+      minTripDistance: 160,
+      joinTrip: 70,
+      joinRadius: 25,
+      /** Chance an empty aircraft or Basalt tempts a bot on a long trip. */
+      aircraftChance: 0.5,
+      basaltChance: 0.6,
+      /** Driver waits for boarding squadmates. */
+      driverWait: 4,
+      arriveRadius: 40,
+      waypointReach: 6,
+      whiskerAngle: 0.38,
+      whiskerBase: 6,
+      whiskerPerSpeed: 0.6,
+      /** Probe height above the hull origin (low enough to see barriers and kerb walls). */
+      probeHeight: 0.6,
+      brakeBase: 3,
+      brakePerSpeed: 0.45,
+      /** A driver that moves less than stuckDistance over stuckSeconds reverses out. */
+      stuckDistance: 3,
+      stuckSeconds: 2.5,
+      reverseSeconds: 1.6,
+      stuckGiveUp: 4,
+      bailBelow: 0.15,
+      /** Passengers leave a vehicle that has had no driver for this long. */
+      noDriverSeconds: 2.5,
+      gunnerRange: { cannon: 260, coax: 120, chin: 220, minigun: 160, doorgun: 140, rockets: 200, personal: 120 } as Record<string, number>,
+      retarget: 0.5,
+      heatRelease: 0.85,
+      heatResume: 0.35,
+      /** Fire tolerance in meters at the target (cannon, automatic mounts). */
+      fireToleranceCannon: 1.6,
+      fireToleranceAuto: 2.6,
+      /** Pilots: cruise and attack heights above the terrain ahead, orbit around the objective. */
+      flightAltitude: 70,
+      attackAltitude: 38,
+      takeoffAltitude: 18,
+      orbitRadius: 120,
+      orbitLead: 0.5,
+      searchRange: 260,
+      attackCooldown: 7,
+      pullUpDistance: 45,
+      pullUpAltitude: 14,
+      extendSeconds: 4,
+      obstacleProbe: 55,
+      mapMargin: 60,
+      /** Soldiers on foot with a launcher engage enemy vehicles. */
+      antiVehicleRange: 180,
+      launcherChance: 0.8,
+      launcherTimeout: 14,
+      launcherBusyRange: 30,
+      dumbFireRange: 70,
+      dumbFireAfter: 2.5,
+      /** Squad leaders on long trips request airdrops when nothing is close. */
+      callinCheck: 12,
+      callinTrip: 220,
+      callinNoVehicleRadius: 80,
+      /** Engineers walk to damaged friendly vehicles and repair them. */
+      repairRange: 35,
+      repairBelow: 0.8,
+    },
     /** Bot gadget decisions. */
     gadgets: { interval: 0.6, healRange: 35, healBelow: 70, selfHealBelow: 55, shieldSuppression: 0.35, cacheRadius: 12, droneRange: 140, sensorMin: 12, sensorMax: 45, grappleRise: 5 },
     /** Bot roster: class mix and per-class weapon and throwable pools. */
@@ -638,6 +768,8 @@ export const TUNING = {
     minimapRate: 30,
     minimapRadius: 120,
     minimapZoomedRadius: 60,
+    /** Crewed enemy vehicles show on the minimap inside this range. */
+    minimapVehicleRange: 180,
     compassFov: 140,
     pings: { requestLife: 15, maxPerOwner: 2, maxRange: 600 },
     /** Damage in one hit that triggers the chromatic glitch. */

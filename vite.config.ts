@@ -9,6 +9,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 6000,
     assetsInlineLimit: 0,
     sourcemap: false,
+    minify: process.env.VF_NOMINIFY ? false : 'esbuild',
   },
   worker: { format: 'es' },
   optimizeDeps: { exclude: ['recast-navigation', '@recast-navigation/core', '@recast-navigation/wasm', '@recast-navigation/generators', '@recast-navigation/three'] },

@@ -123,10 +123,44 @@ export class Minimap {
       ctx.fillText(z.id, 0, 0.5 * dpr);
       ctx.restore();
     }
+    // Vehicles: friendly and empty always, crewed enemy vehicles within earshot.
+    for (const vh of w.vehicles) {
+      const enemy = vh.team !== team && vh.crewed;
+      if (enemy && Math.hypot(vh.x - px, vh.z - pz) > TUNING.ui.minimapVehicleRange) continue;
+      const [u, v] = at(vh.x, vh.z);
+      if (Math.abs(u) > W || Math.abs(v) > H) continue;
+      ctx.save();
+      ctx.translate(u, v);
+      ctx.rotate(-vh.yaw);
+      ctx.fillStyle = enemy ? this.c.foe : vh.crewed ? this.c.friend : 'rgba(200,210,220,0.7)';
+      ctx.strokeStyle = 'rgba(5,8,13,0.85)';
+      ctx.lineWidth = 1.5 * dpr;
+      const k = dpr;
+      ctx.beginPath();
+      if (vh.aircraft) {
+        ctx.moveTo(0, -8 * k);
+        ctx.lineTo(7 * k, 3 * k);
+        ctx.lineTo(2 * k, 2 * k);
+        ctx.lineTo(0, 7 * k);
+        ctx.lineTo(-2 * k, 2 * k);
+        ctx.lineTo(-7 * k, 3 * k);
+      } else {
+        const hw = (vh.kind === 'basalt' ? 5 : 4) * k, hl = (vh.kind === 'basalt' ? 7 : 6) * k;
+        ctx.moveTo(0, -hl - 2 * k);
+        ctx.lineTo(hw, -hl + 2 * k);
+        ctx.lineTo(hw, hl);
+        ctx.lineTo(-hw, hl);
+        ctx.lineTo(-hw, -hl + 2 * k);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+      ctx.restore();
+    }
     // Soldiers.
     const time = w.time;
     for (const o of w.soldiers) {
-      if (!o.alive || o === p) continue;
+      if (!o.alive || o === p || o.inVehicle) continue;
       const [u, v] = at(o.pos.x, o.pos.z);
       if (Math.abs(u) > W || Math.abs(v) > H) continue;
       if (o.team === team) {

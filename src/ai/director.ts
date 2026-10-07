@@ -11,7 +11,11 @@ import { yawOf } from '../core/math';
 import { chestPoint } from '../weapons/hitboxes';
 import { hasPassive } from '../gadgets/state';
 import { BotGadgets } from './gadgetUse';
+import { VehicleCrews, type CrewHost } from './vehicleCrew';
 import type { GadgetSystem } from '../gadgets/system';
+import type { VehicleSystem } from '../vehicles/system';
+import type { Vehicle } from '../vehicles/vehicle';
+import type { CallInKind } from '../gadgets/callins';
 import type { AimProfile } from './aim';
 import type { ObjectiveView } from './utility';
 import type { Soldier } from '../player/soldier';
@@ -41,6 +45,13 @@ export interface AIHost {
   /** Team HQ centers (team 0, team 1). */
   hqCenter(team: TeamId): THREE.Vector3;
   readonly gadgets: GadgetSystem;
+  readonly vehicles: VehicleSystem;
+  groundHeight(x: number, z: number): number;
+  enterVehicle(s: Soldier, v: Vehicle, seat: number): boolean;
+  exitVehicle(s: Soldier): boolean;
+  switchSeat(s: Soldier, seat: number): boolean;
+  requestCallIn(s: Soldier, kind: CallInKind): boolean;
+  readonly mapLimit: number;
 }
 
 export interface ObjectiveSource {
@@ -57,7 +68,7 @@ interface ZoneView extends ObjectiveView {
   n: [number, number];
 }
 
-export class AIDirector implements BotWorld {
+export class AIDirector implements BotWorld, CrewHost {
   readonly brains = new Map<number, BotBrain>();
   readonly squads: Squad[] = [];
   readonly rng = new Rng(9001);
@@ -74,6 +85,7 @@ export class AIDirector implements BotWorld {
   /** Stats for the debug readout. */
   pathsServed = 0;
   private botGadgets: BotGadgets | null = null;
+  readonly crews: VehicleCrews;
 
   constructor(
     readonly host: AIHost,
@@ -82,6 +94,7 @@ export class AIDirector implements BotWorld {
   ) {
     this.difficulty = difficulty;
     this.profile = A.difficulty[difficulty];
+    this.crews = new VehicleCrews(this);
     for (const c of covers) {
       const k = this.cellKey(Math.floor(c.pos.x / COVER_CELL), Math.floor(c.pos.z / COVER_CELL));
       let l = this.coverGrid.get(k);
@@ -118,6 +131,33 @@ export class AIDirector implements BotWorld {
   }
   get interactives(): Interactives {
     return this.host.interactives;
+  }
+
+  // ---- CrewHost --------------------------------------------------------------------------------
+  get vehicles(): VehicleSystem {
+    return this.host.vehicles;
+  }
+  get mapLimit(): number {
+    return this.host.mapLimit;
+  }
+  groundHeight(x: number, z: number): number {
+    return this.host.groundHeight(x, z);
+  }
+  probe(from: THREE.Vector3, dir: THREE.Vector3, max: number, ignore: unknown): number {
+    const h = this.host.collision.raycast(from, dir, max, { worldOnly: true, ignore });
+    return h ? h.dist : Infinity;
+  }
+  enterVehicle(s: Soldier, v: Vehicle, seat: number): boolean {
+    return this.host.enterVehicle(s, v, seat);
+  }
+  exitVehicle(s: Soldier): boolean {
+    return this.host.exitVehicle(s);
+  }
+  switchSeat(s: Soldier, seat: number): boolean {
+    return this.host.switchSeat(s, seat);
+  }
+  requestCallIn(s: Soldier, kind: CallInKind): boolean {
+    return this.host.requestCallIn(s, kind);
   }
 
   canSee(from: THREE.Vector3, to: THREE.Vector3): boolean {
@@ -195,7 +235,7 @@ export class AIDirector implements BotWorld {
   summary(): Record<string, unknown> {
     const modes: Record<string, number> = {};
     for (const b of this.brains.values()) {
-      const k = !b.s.alive ? 'dead' : b.s.downed ? 'downed' : b.mode;
+      const k = !b.s.alive ? 'dead' : b.s.downed ? 'downed' : b.s.inVehicle ? 'vehicle' : b.mode;
       modes[k] = (modes[k] ?? 0) + 1;
     }
     const orders = this.squads.map((q) => `${q.team}${q.order.kind[0]}${q.order.zone ?? '-'}`).join(' ');
@@ -288,9 +328,11 @@ export class AIDirector implements BotWorld {
       else q.b.setPath([q.to.clone()]);
       this.pathsServed++;
     }
-    this.botGadgets ??= new BotGadgets(this.host.gadgets, () => this.host.soldiers, this.rng);
+    this.botGadgets ??= new BotGadgets(this.host.gadgets, () => this.host.soldiers, this.rng, this.host.vehicles);
     for (const b of this.brains.values()) {
       b.tick(dt, this);
+      const o = b.squad?.order;
+      this.crews.step(b, dt, o && o.kind !== 'roam' ? o : null);
       this.botGadgets.step(b, dt);
     }
   }

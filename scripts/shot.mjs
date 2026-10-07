@@ -9,7 +9,7 @@ const app = await electron.launch({ args });
 const page = await app.firstWindow();
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+page.on("pageerror", (e) => errors.push(`pageerror: ${e.stack ?? e.message}`));
 const shots = out.split(',');
 // SHOT_ACTS="0:downPlayer,2:killPlayer" runs a test action right before shot N.
 const acts = new Map((process.env.SHOT_ACTS ?? '').split(',').filter(Boolean).map((a) => a.split(':')).map(([i, n]) => [Number(i), n]));

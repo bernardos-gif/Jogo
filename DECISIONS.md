@@ -81,3 +81,19 @@ One line per choice. Newest entries are appended at the end of each section.
 - Bots fly their Kestrel on autopilot in an orbit over their squad's objective; the player pilots it from the drone's own camera (Space / Shift climb and dive, fire to spot).
 - The call-in tablet offers the two ground vehicles (Wisp and Basalt); aircraft spawn on the HQ pads instead of being airdropped.
 
+## Vehicles
+
+- Controls in a vehicle: W/S throttle (aircraft: nose down and forward / back), A/D steer (aircraft: strafe and roll), mouse aims the seat's weapon (aircraft: heading), Space brake (aircraft: climb), Shift (aircraft: descend), X countermeasures (smoke on ground vehicles, flares on aircraft; the fire-mode key, unused in a vehicle seat), R toggles the Condor's hover and cruise modes (the reload key; mounts reload by themselves), C switches seat and chase cameras, E exits, F1-F4 switch seats.
+- The Basalt's driver also aims and fires the main cannon (a one-person tank stays useful); the second seat is the coax gunner.
+- Wisp passengers keep their own weapons and can be shot; Basalt and Condor seats are enclosed, and the Midge's door gunner is exposed.
+- Vehicles are dynamic Rapier bodies with locked rotations whose velocity and rotation the vehicle code sets each tick (an arcade model with physical collisions against the world and each other); crash damage counts horizontal speed lost against an obstacle only.
+- Self-repair restores the hull to 50% after 8 s without damage; Petrova's Arc Tool repairs the rest.
+- Only Wisp and Basalt can be airdropped; aircraft spawn on HQ pads.
+- Enemy crewed vehicles appear on the minimap within 180 m (they are loud); empty vehicles appear in grey for everyone.
+
+## Bot crews
+
+- Bots consider vehicles only for trips over 160 m (joining a squadmate's vehicle from 70 m), within 30 m of the bot; an empty aircraft tempts a bot half the time and a Basalt 60% of the time, so pads empty steadily without every bot queueing for them.
+- Bot pilots fly an orbit 120 m around their squad's objective at 70 m above the terrain ahead and dive on targets to 38 m, pulling out at 45 m from the target; this keeps aircraft visible and threatening without making them unbeatable.
+- Bots fire launchers at vehicles only on a lock, or dumb-fire inside 70 m after holding aim for 2.5 s.
+

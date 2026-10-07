@@ -111,6 +111,14 @@ export class BotBrain {
 
   // ---- Revive and evade
   reviveTarget: Soldier | null = null;
+
+  // ---- Overrides from the crew and gadget planners
+  /** Walk here instead of the objective (a vehicle to board, a vehicle to repair). */
+  detour: THREE.Vector3 | null = null;
+  /** Another planner drives aim and trigger this tick (launcher on a vehicle). */
+  aimOverride = false;
+  /** In an open vehicle seat with a personal weapon: perceive and shoot from the seat. */
+  seatCombat = false;
   private readonly evadeDir = new THREE.Vector3();
   private evadeT = 0;
 
@@ -138,6 +146,9 @@ export class BotBrain {
     this.cover = null;
     this.thinkT = 0;
     this.perceiveT = 0;
+    this.detour = null;
+    this.aimOverride = false;
+    this.seatCombat = false;
   }
 
   setPath(points: THREE.Vector3[]): void {
@@ -172,7 +183,19 @@ export class BotBrain {
     inp.sprint = false;
     inp.jumpHeld = false;
     inp.interactHeld = false;
-    if (!s.alive || s.downed || s.inVehicle) return;
+    if (!s.alive || s.downed) return;
+    if (s.inVehicle) {
+      if (this.seatCombat) {
+        this.perceiveT -= dt;
+        if (this.perceiveT <= 0) {
+          this.perceiveT = A.lod.perceive[0];
+          this.perceive(w);
+        }
+        this.mode = this.target && this.targetVisible ? 'combat' : 'objective';
+        this.aimAndFire(dt, w);
+      }
+      return;
+    }
     this.suppression = Math.max(0, this.suppression - A.suppression.decay * dt);
     this.spotT -= dt;
     this.grenadeT -= dt;
@@ -191,7 +214,7 @@ export class BotBrain {
       this.think(w);
     }
     this.steer(dt, w);
-    this.aimAndFire(dt, w);
+    if (!this.aimOverride) this.aimAndFire(dt, w);
     this.applyStance();
   }
 
@@ -205,7 +228,7 @@ export class BotBrain {
     const cands: { e: Soldier; score: number }[] = [];
     const halfFov = (p.fov * DEG) / 2;
     for (const e of w.soldiers) {
-      if (e.team === s.team || !e.alive || e.inVehicle) continue;
+      if (e.team === s.team || !e.alive || e.enclosed) continue;
       const dx = e.pos.x - s.pos.x, dz = e.pos.z - s.pos.z;
       const d = Math.hypot(dx, dz);
       const spotted = e.spottedUntil > w.time && e.spottedByTeam === s.team;
@@ -272,7 +295,7 @@ export class BotBrain {
     // Out of primary ammo entirely: the sidearm.
     const prim = a.slots[0];
     if (a.slot === 0 && !prim.usesHeat && prim.mag === 0 && prim.reserve === 0) s.input.slot = 1;
-    if (a.slot === 2) s.input.slot = 0;
+    if (a.slot === 2 && !this.aimOverride) s.input.slot = 0;
 
     if (this.target && this.targetVisible) {
       this.mode = 'combat';
@@ -320,6 +343,10 @@ export class BotBrain {
 
   private objectiveGoal(w: BotWorld): void {
     const s = this.s;
+    if (this.detour) {
+      this.setGoal(w, this.detour, 2);
+      return;
+    }
     const sq = this.squad;
     const o = sq?.order;
     if (!o) {

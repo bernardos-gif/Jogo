@@ -371,11 +371,11 @@ export class App {
       aliveSoldiers: this.battle?.soldiers.filter((s) => s.alive).length ?? 0,
       kills: this.battle ? this.battle.soldiers.reduce((n, s) => n + s.stats.kills, 0) : 0,
       tickets: this.battle?.mode instanceof SectorMode ? [Math.round(this.battle.mode.tickets.tickets[0]), Math.round(this.battle.mode.tickets.tickets[1])] : [0, 0],
-      vehiclesUsed: this.battle?.callIns.requests ?? 0,
+      vehiclesUsed: this.battle ? this.battle.callIns.requests + this.battle.vehicles.entries : 0,
       gadgetsUsed: this.battle?.gadgets.uses ?? 0,
       stormEvents: 0,
       flowVisited: [...this.flowVisited],
-      notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : ''] : [],
+      notes: this.battle ? [JSON.stringify({ ...this.battle.debug, flow: this.flow?.state ?? '-' }), JSON.stringify(this.battle.ai.summary()), this.battle.mode instanceof SectorMode ? this.battle.mode.zones.map((z) => `${z.id}:${z.owner}:${z.control.toFixed(2)}${z.contested ? '!' : ''}`).join(' ') : '', this.battle.vehicles.list.map((v) => `${v.kind}${v.team}:${v.crewCount}:${Math.round(v.hp)}@${Math.round(v.pos.x)},${Math.round(v.pos.y)},${Math.round(v.pos.z)}${v.alive ? '' : 'X'}`).join(' '), this.battle.ai.crews.debugLine(this.battle.ai.brains)] : [],
     };
   }
 
@@ -400,6 +400,16 @@ export class App {
       const at = b.dropPoint(p, p.pos.clone());
       return b.callIns.request(p, 'wisp', at.point, at.point.y);
     }
+    if (name.startsWith('board')) {
+      // Puts the player in the nearest friendly vehicle of a kind (board:wisp, board:condor ...).
+      if (!p.active) return false;
+      if (p.inVehicle) b.vehicles.exit(p, b, true);
+      const kind = name.split(':')[1] ?? 'wisp';
+      const v = b.vehicles.list.filter((x) => x.alive && x.kind === kind && x.team === p.team && x.seats[0] === null).sort((x, y) => x.pos.distanceTo(p.pos) - y.pos.distanceTo(p.pos))[0];
+      if (!v) return false;
+      return b.vehicles.enter(p, v, 0);
+    }
+    if (name === 'exitVehicle') return p.inVehicle && b.vehicles.exit(p, b, true);
     if (name === 'showcase') {
       if (!p.alive) return false;
       b.gadgets.showcase(p, b);

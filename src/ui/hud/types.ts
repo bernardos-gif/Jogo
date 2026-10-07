@@ -5,6 +5,7 @@ import type { ZoneState } from '../../modes/sector/logic';
 import type { TacticalImage } from '../../render/tacticalMap';
 import type { Ping } from '../../net-sim/pings';
 import type { TeamId } from '../../config/content';
+import type { VehicleView } from './vehicleHud';
 
 export interface HudPrompt {
   key: string;
@@ -40,4 +41,8 @@ export interface HudWorld {
   hazards: readonly { x: number; z: number; r: number; label: string }[];
   /** Piloted drone readout (battery fraction, altitude above ground, hp fraction). */
   drone: { battery: number; altitude: number; hp: number } | null;
+  /** The player's vehicle and seat (null on foot). */
+  vehicle: VehicleView | null;
+  /** Vehicles for the minimap (alive ones). */
+  vehicles: readonly { x: number; z: number; yaw: number; team: TeamId; kind: string; crewed: boolean; aircraft: boolean }[];
 }

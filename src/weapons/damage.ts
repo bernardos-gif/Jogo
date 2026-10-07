@@ -36,6 +36,8 @@ export interface CombatContext {
   isMedic(s: Soldier): boolean;
   fastReviver(s: Soldier): boolean;
   explosiveResist(s: Soldier): number;
+  /** True for soldiers protected inside an enclosed vehicle seat (the vehicle takes the hit). */
+  shielded?(s: Soldier): boolean;
 }
 
 export interface DamageInfo {
@@ -235,7 +237,7 @@ export function explode(ctx: CombatContext, pos: THREE.Vector3, o: ExplodeOpts):
   ctx.events.emit('explosion', { pos: pos.clone(), radius: o.radius, kind: o.kind, owner: o.attacker });
   const E = TUNING.explosions;
   for (const s of ctx.soldiers) {
-    if (!s.alive) continue;
+    if (!s.alive || ctx.shielded?.(s)) continue;
     chestPoint(s, _c);
     const d = _c.distanceTo(pos);
     if (d > o.radius) continue;

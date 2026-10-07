@@ -190,6 +190,8 @@ export class Soldier {
   /** Vehicle seat while mounted. */
   vehicleId = -1;
   seat = -1;
+  /** True in an enclosed seat (bullets cannot reach the occupant, bots ignore them as targets). */
+  enclosed = false;
 
   /** Weapons, throwables and melee state (assigned when the soldier joins a battle). */
   arsenal!: Arsenal;

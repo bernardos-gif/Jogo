@@ -1483,3 +1483,324 @@
   font-size: var(--fs-10);
   text-align: center;
 }
+
+/* ---- Vehicle HUD ------------------------------------------------------------------------- */
+.hud.in-vehicle .weapon-panel,
+.hud.in-vehicle .ammo-cue {
+  display: none;
+}
+.vehicle-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.vh-panel {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 300px;
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transform-origin: bottom right;
+  transform: scale(var(--hud-scale));
+  animation: panel-in var(--t-panel) var(--ease) both;
+}
+.vh-panel.raised {
+  bottom: 236px;
+}
+.hud.no-weapon .crosshair {
+  display: none;
+}
+.vh-panel.no-mount .vh-weapon {
+  display: none;
+}
+.vh-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.vh-name {
+  font-size: var(--fs-18);
+  letter-spacing: 0.14em;
+}
+.vh-seat {
+  color: var(--cyan);
+  text-align: right;
+}
+.vh-hullrow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.vh-hull {
+  height: 6px;
+}
+.vh-hull.low > i {
+  background: var(--red);
+}
+.vh-hullnum {
+  font-size: var(--fs-13);
+  min-width: 38px;
+  text-align: right;
+}
+.vh-comps {
+  display: flex;
+  gap: 6px;
+}
+.vh-comp {
+  flex: 1;
+  text-align: center;
+  padding: 2px 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-10);
+  letter-spacing: 0.14em;
+  color: var(--fg-dim);
+  border: 1px solid var(--hair);
+}
+.vh-comp.damaged {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.vh-comp.crippled {
+  color: var(--red);
+  border-color: var(--red);
+  animation: blink 0.8s steps(2) infinite;
+}
+.vh-wtop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+.vh-mount {
+  color: var(--fg);
+}
+.vh-ammo {
+  font-size: var(--fs-13);
+}
+.vh-heat > i {
+  background: linear-gradient(90deg, var(--cyan), var(--amber) 70%, var(--red));
+}
+.vh-heat.over > i {
+  background: var(--red);
+  animation: blink 0.4s steps(2) infinite;
+}
+.vh-heat.reload > i {
+  background: var(--fg-dim);
+}
+.vh-heat.ammo > i {
+  background: var(--cyan);
+}
+.vh-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.vh-cm.active {
+  color: var(--amber);
+}
+.vh-seats {
+  display: flex;
+  gap: 4px;
+}
+.vh-seatbox {
+  width: 18px;
+  height: 18px;
+  font-size: var(--fs-10);
+  line-height: 16px;
+  text-align: center;
+  color: var(--fg-faint);
+  border: 1px solid var(--hair);
+}
+.vh-seatbox.taken {
+  color: var(--ink);
+  background: var(--friend);
+  border-color: var(--friend);
+}
+.vh-seatbox.squad {
+  background: var(--squad);
+  border-color: var(--squad);
+}
+.vh-seatbox.me {
+  outline: 1px solid var(--fg);
+  outline-offset: 2px;
+}
+.vh-hint {
+  font-size: var(--fs-10);
+  color: var(--fg-faint);
+}
+.vh-speedbox {
+  position: absolute;
+  left: calc(50% - 230px);
+  top: calc(50% + 60px);
+  text-align: right;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
+.vh-speed {
+  font-size: var(--fs-28);
+  line-height: 1;
+}
+.vh-heading {
+  margin-top: 4px;
+  color: var(--fg-dim);
+}
+/* Flight instruments */
+.vh-flight {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.vh-att {
+  position: absolute;
+  left: -150px;
+  top: -130px;
+  width: 300px;
+  height: 260px;
+  overflow: hidden;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 52%, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, #000 52%, transparent 72%);
+}
+.vh-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0;
+}
+.vh-hline {
+  position: absolute;
+  left: -40px;
+  right: -40px;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan) 15%, var(--cyan) 38%, transparent 42%, transparent 58%, var(--cyan) 62%, var(--cyan) 85%, transparent);
+  box-shadow: 0 0 6px var(--cyan-glow);
+}
+.vh-ladder {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+}
+.vh-rung {
+  position: absolute;
+  left: 95px;
+  right: 95px;
+  height: 0;
+  border-top: 1px solid rgba(63, 215, 255, 0.55);
+}
+.vh-rung.neg {
+  border-top-style: dashed;
+}
+.vh-rung span {
+  position: absolute;
+  right: -22px;
+  top: -7px;
+  font-size: var(--fs-10);
+  color: var(--cyan);
+}
+.vh-wings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70px;
+  height: 10px;
+  margin: -1px 0 0 -35px;
+  border-top: 2px solid var(--fg);
+}
+.vh-wings::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border: 2px solid var(--fg);
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg);
+}
+.vh-tapebox {
+  position: absolute;
+  top: -110px;
+  width: 64px;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.vh-tapebox.left {
+  left: -250px;
+}
+.vh-tapebox.right {
+  left: 186px;
+}
+.vh-tape {
+  position: absolute;
+  inset: 0 18px;
+  border-left: 1px solid var(--hair);
+  background-image: linear-gradient(rgba(63, 215, 255, 0.5) 1px, transparent 1px);
+  background-size: 100% 40px;
+  -webkit-mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+  mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent);
+}
+.vh-tapenum {
+  position: relative;
+  padding: 2px 6px;
+  font-size: var(--fs-15);
+  background: var(--glass-strong);
+  border: 1px solid var(--cyan);
+}
+.vh-tapenum.low {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.vh-tapebox .label {
+  position: relative;
+  font-size: var(--fs-10);
+}
+.vh-vtol {
+  position: absolute;
+  left: -40px;
+  top: 150px;
+  width: 80px;
+  padding: 3px 0;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-11);
+  letter-spacing: 0.16em;
+  color: var(--cyan);
+  border: 1px solid var(--hair);
+}
+.vh-warn {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  padding: 4px 16px;
+  font-size: var(--fs-22);
+  letter-spacing: 0.24em;
+  color: var(--amber);
+  border: 1px solid currentColor;
+  background: rgba(30, 12, 0, 0.45);
+  text-shadow: 0 0 10px currentColor;
+}
+.vh-warn[data-tone='red'] {
+  color: var(--red);
+  background: rgba(40, 0, 6, 0.5);
+}
+.vh-warn[data-tone='cyan'] {
+  color: var(--cyan);
+  background: rgba(0, 20, 30, 0.5);
+}

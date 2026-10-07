@@ -31,7 +31,7 @@ import { SoldierTargets } from '../weapons/hitboxes';
 import { stepHealth } from '../weapons/damage';
 import { Hud } from '../ui/hud/hud';
 import { attachmentUnlocked } from '../net-sim/unlocks';
-import { SPECIALIST_BY_ID, type AttachmentId, type ClassId, type SpecialistId, type TeamId, type ThrowableId, type WeaponId } from '../config/content';
+import { SPECIALIST_BY_ID, VEHICLES, type AttachmentId, type ClassId, type SpecialistId, type TeamId, type ThrowableId, type WeaponId } from '../config/content';
 import type { MapBuild } from '../world/maps/mapBuild';
 import { Destructibles, type Destructible } from '../world/destruction';
 import { Water } from '../world/water';
@@ -40,8 +40,11 @@ import { captureTacticalMap, type TacticalImage } from '../render/tacticalMap';
 import { Pings, type PingKind } from '../net-sim/pings';
 import { GadgetSystem, type GadgetContext } from '../gadgets/system';
 import { hasPassive } from '../gadgets/state';
-import { CallIns } from '../gadgets/callins';
+import { CallIns, type CallInKind } from '../gadgets/callins';
+import { VehicleSystem, type VehicleContext } from '../vehicles/system';
+import { SEAT_MOUNTS, type Vehicle } from '../vehicles/vehicle';
 import { keyLabel } from '../ui/screens/widgets';
+import type { VehicleView } from '../ui/hud/vehicleHud';
 import type { HudWorld, HudPrompt } from '../ui/hud/types';
 import type { ScoreboardData } from '../ui/screens/scoreboard';
 import type { GadgetView } from '../ui/hud/weaponPanel';
@@ -59,12 +62,13 @@ import type { GameScene } from '../scenes/gameScene';
 import type { BattleMode } from './mode';
 import type { BodyMode } from '../art/soldierAnim';
 
+const MOUNT_NAMES: Record<string, string> = { cannon: 'Siege cannon', coax: 'Coax beam', rockets: 'Rocket pods', chin: 'Chin turret', minigun: 'Twin miniguns', doorgun: 'Door gun' };
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const makeHitTmp = makeHit();
 
-export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
+export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, VehicleContext {
   readonly scene = new THREE.Scene();
   readonly physics: Physics;
   readonly collision = new CollisionWorld();
@@ -116,6 +120,11 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
   readonly pings: Pings;
   readonly gadgets: GadgetSystem;
   readonly callIns: CallIns;
+  readonly vehicles: VehicleSystem;
+  /** Vehicle camera: first person (seat) or third person. */
+  vehicleThirdPerson = true;
+  private vehCam = new THREE.Vector3();
+  private vehCamInit = false;
   tactical: TacticalImage | null = null;
   private pingHeld = -1;
   private navGeometry: THREE.BufferGeometry;
@@ -192,11 +201,16 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
     this.fp = new FpCamera(renderer.aspect);
     this.vfx.camera = this.fp.camera;
     this.viewmodel = new Viewmodel(renderer.aspect);
-    this.collision.targets.push(new SoldierTargets(() => this.soldiers, (s) => !s.inVehicle));
+    this.collision.targets.push(new SoldierTargets(() => this.soldiers, (s) => this.vehicles.exposed(s)));
     this.ai = new AIDirector(this, map.builder.covers, save.settings.difficulty);
     this.pings = new Pings(this.events);
     this.gadgets = new GadgetSystem(this.scene);
     this.callIns = new CallIns(this.scene);
+    this.vehicles = new VehicleSystem(this.scene);
+    this.collision.targets.push(this.vehicles);
+    if (map.hqs) this.vehicles.setupPads(map.hqs, (x, z) => this.terrain.heightAt(x, z));
+    this.vehicles.reset(this);
+    this.callIns.onLand = (kind, team, pos, yaw) => this.vehicles.spawn(kind, team, pos, yaw, this.physics);
 
     this.moveCtx = {
       physics: this.physics,
@@ -387,8 +401,18 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       s.input.yaw += yaw;
     }
   }
-  lockCandidate(): { id: unknown; pos(): THREE.Vector3 | null } | null {
-    return null;
+  lockCandidate(s: Soldier): { id: unknown; pos(): THREE.Vector3 | null } | null {
+    return this.vehicles.lockCandidate(s, s.eyePos, s.yaw, s.pitch);
+  }
+  personalWeaponSeat(s: Soldier): boolean {
+    const v = this.vehicles.vehicleOf(s);
+    return !!v && SEAT_MOUNTS[v.kind][s.seat] === 'personal';
+  }
+  shielded(s: Soldier): boolean {
+    return s.inVehicle && !this.vehicles.exposed(s);
+  }
+  arcVehicle(by: Soldier, ref: unknown, dt: number): boolean {
+    return this.vehicles.arc(by, ref, dt, this);
   }
   throwGrenade(s: Soldier, kind: ThrowableId, origin: THREE.Vector3, dir: THREE.Vector3): void {
     this.throwables.throw(s, kind, origin, dir);
@@ -407,11 +431,15 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       this.destructibles.radiusDamage(pos, radius * TUNING.destruction.explosionRadiusMul, damage * TUNING.destruction.explosionDamageMul);
       this.gadgets.radiusDamage(pos, radius, damage, _attacker, this);
     }
-    if (kind === 'emp') this.gadgets.emp(pos, radius, this, _attacker ? _attacker.team : -1);
+    if (kind === 'emp') {
+      this.gadgets.emp(pos, radius, this, _attacker ? _attacker.team : -1);
+      this.vehicles.emp(pos, radius, _attacker ? _attacker.team : -1);
+    } else this.vehicles.radiusDamage(pos, radius, _vehicleDamage, _attacker, this);
   }
-  damageObject(ref: unknown, _kind: string, damage: number, attacker: Soldier | null = null, pos: THREE.Vector3 = _v): boolean {
-    if (ref && typeof ref === 'object' && 'maxHp' in ref) return this.destructibles.damage(ref as Destructible, damage * TUNING.destruction.bulletMul);
+  damageObject(ref: unknown, _kind: string, damage: number, attacker: Soldier | null = null, pos: THREE.Vector3 = _v, vehicleDamage = 0): boolean {
+    if (this.vehicles.damageRef(ref, vehicleDamage, attacker, this, pos)) return true;
     if (this.gadgets.damageRef(ref, damage, attacker, this, pos)) return true;
+    if (ref && typeof ref === 'object' && 'debris' in ref && 'maxHp' in ref) return this.destructibles.damage(ref as Destructible, damage * TUNING.destruction.bulletMul);
     return false;
   }
 
@@ -431,6 +459,38 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
   }
 
   // ---- GadgetContext -------------------------------------------------------------------------
+  // ---- Crew host (bots and vehicles) -------------------------------------------------------------
+  readonly mapLimit = TUNING.movement.mapLimit;
+
+  enterVehicle(s: Soldier, v: Vehicle, seat: number): boolean {
+    return this.vehicles.enter(s, v, seat);
+  }
+
+  exitVehicle(s: Soldier): boolean {
+    return this.vehicles.exit(s, this);
+  }
+
+  switchSeat(s: Soldier, seat: number): boolean {
+    return this.vehicles.switchSeat(s, seat);
+  }
+
+  /** A bot's airdrop request: open ground a little ahead of it. */
+  requestCallIn(s: Soldier, kind: CallInKind): boolean {
+    if (!this.callIns.ready(s.team, kind)) return false;
+    for (let k = 0; k < 6; k++) {
+      const a = s.yaw + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.9;
+      _v.set(s.pos.x - Math.sin(a) * 14, 0, s.pos.z - Math.cos(a) * 14);
+      const ty = this.terrain.heightAt(_v.x, _v.z);
+      const gy = this.collision.groundBelow(_v.x, ty + 120, _v.z, 200);
+      if (gy === null || Math.abs(gy - ty) > 0.6) continue;
+      _v.y = ty;
+      if (!this.callIns.request(s, kind, _v, ty)) return false;
+      this.events.emit('ping', { soldier: s, pos: _v.clone(), kind: 'vehicle' });
+      return true;
+    }
+    return false;
+  }
+
   groundHeight(x: number, z: number): number {
     return this.terrain.heightAt(x, z);
   }
@@ -443,6 +503,34 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       return;
     }
     this.ai.spot(by, target);
+  }
+
+  /** Interact enters or leaves a vehicle; seat keys switch seats. */
+  private vehicleSeatInput(s: Soldier): void {
+    const i = s.input;
+    if (!s.alive) {
+      if (s.inVehicle) this.vehicles.exit(s, this, true);
+      return;
+    }
+    if (s.inVehicle) {
+      if (s.downed) {
+        this.vehicles.exit(s, this, true);
+        return;
+      }
+      s.prevYaw = s.yaw;
+      s.prevPitch = s.pitch;
+      s.yaw = i.yaw;
+      s.pitch = clamp(i.pitch, -TUNING.camera.pitchLimit, TUNING.camera.pitchLimit);
+      if (i.interact) this.vehicles.exit(s, this);
+      else if (i.seat >= 0) this.vehicles.switchSeat(s, i.seat);
+      return;
+    }
+    // Bots board through the crew planner (AIDirector), never by a stray interact press.
+    if (!s.isPlayer || !s.active || !i.interact || s.state === 'ladder' || s.state === 'zipline') return;
+    // Ladders and ziplines take precedence when right at hand.
+    if (this.interactives.nearestLadder(s.pos, 1.2) || this.interactives.nearestZipline(s.pos, 1.5)) return;
+    const v = this.vehicles.nearest(s);
+    if (v && this.vehicles.enter(s, v)) i.interact = false;
   }
 
   /** A piloting soldier stands still; the drone takes the command. */
@@ -502,6 +590,8 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
     this.pings.clear();
     this.gadgets.clear(this);
     this.callIns.clear();
+    this.vehicles.reset(this);
+    this.ai.crews.clear();
     for (const s of this.soldiers) s.piloting = false;
     this.hud?.clearTransient();
   }
@@ -578,7 +668,8 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       // Autoplay: the player's brain writes the command; the camera follows its aim.
       input.takeMouse();
       this.controller.setAim(p.yaw, p.pitch);
-    } else this.controller.frame(p, a.adsK, zoom);
+    } else this.controller.frame(p, a.adsK, zoom, p.inVehicle && !this.personalWeaponSeat(p));
+    if (p.inVehicle && input.pressed('vehicleCamera')) this.vehicleThirdPerson = !this.vehicleThirdPerson;
     if (menu?.open || this.hud?.comms.open || this.hud?.tablet.open) {
       p.input.slot = -1;
       p.input.fire = false;
@@ -707,6 +798,53 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       prompt: this.interactPrompt(p),
       hazards: this.hazards,
       drone: this.droneReadout(p),
+      vehicle: this.vehicleView(p),
+      vehicles: this.vehicles.list.filter((v) => v.alive).map((v) => ({ x: v.pos.x, z: v.pos.z, yaw: v.yaw, team: v.team, kind: v.kind, crewed: v.crewCount > 0, aircraft: v.aircraft })),
+    };
+  }
+
+  /** The player's vehicle readout for the vehicle HUD. */
+  private vehicleView(p: Soldier): VehicleView | null {
+    const v = this.vehicles.vehicleOf(p);
+    if (!v) return null;
+    const V = TUNING.vehicles;
+    const VW = V.weapons;
+    const m = v.mounts[p.seat];
+    let mount: VehicleView['mount'] = null;
+    if (m && m.kind && m.kind !== 'personal') {
+      const name = MOUNT_NAMES[m.kind];
+      if (m.kind === 'cannon') mount = { name, heat: null, overheated: false, ammo: m.ammo, ammoMax: 1, reload: m.ammo > 0 ? null : 1 - m.reloadT / VW.cannon.reload };
+      else if (m.kind === 'rockets') mount = { name, heat: null, overheated: false, ammo: m.ammo, ammoMax: VW.rockets.salvo, reload: m.ammo > 0 || m.salvoLeft > 0 ? null : 1 - m.reloadT / VW.rockets.reload };
+      else mount = { name, heat: m.heat, overheated: m.overheatT > 0, ammo: null, ammoMax: 0, reload: null };
+    }
+    const key = (a: keyof typeof save.settings.bindings, d: string) => keyLabel(save.settings.bindings[a][0] ?? d);
+    const C = V.countermeasures;
+    const incoming = this.projectiles.list.some((q) => q.active && q.homing && (q.homing as { id?: unknown }).id === v);
+    return {
+      name: VEHICLES[v.kind].name,
+      kind: v.kind,
+      aircraft: v.aircraft,
+      hp: v.hp / v.maxHp,
+      comps: v.comps,
+      crippledBelow: V.componentCrippled,
+      seat: p.seat,
+      seatLabel: VEHICLES[v.kind].seats[p.seat] ?? '',
+      seats: v.seats.map((s) => ({ taken: !!s, squad: !!s && s !== p && s.squadId === p.squadId })),
+      mount,
+      personal: m?.kind === 'personal',
+      driver: p.seat === 0,
+      speed: v.vel.length(),
+      heading: v.yaw,
+      altitude: v.pos.y - this.terrain.heightAt(v.pos.x, v.pos.z),
+      pitch: v.pitch,
+      roll: v.roll,
+      vtol: v.kind === 'condor' ? (v.forwardFlight ? 'Cruise' : 'Hover') : null,
+      cm: { label: v.aircraft ? 'Flares' : 'Smoke', charges: v.cm.charges, max: C.charges, cooldown: v.cm.cooldown, active: v.cm.activeT > 0 },
+      lockWarn: v.lockWarnT > 0,
+      incoming,
+      emp: v.empT > 0,
+      burning: v.hp < v.maxHp * V.burnBelow,
+      keys: { exit: key('interact', 'KeyE'), cm: key('fireMode', 'KeyX'), camera: key('vehicleCamera', 'KeyC'), vtol: key('reload', 'KeyR') },
     };
   }
 
@@ -730,7 +868,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
 
   /** Context prompt: revive a downed teammate, climb a ladder, ride a zipline. */
   private interactPrompt(p: Soldier): HudPrompt | null {
-    if (!p.active || p.state === 'ladder' || p.state === 'zipline') return null;
+    if (!p.active || p.inVehicle || p.state === 'ladder' || p.state === 'zipline') return null;
     const key = keyLabel(save.settings.bindings.interact[0] ?? 'KeyE');
     const H = TUNING.health;
     for (const t of this.soldiers)
@@ -738,6 +876,8 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
     const R = TUNING.ui.interactRange;
     if (this.interactives.nearestLadder(p.pos, R * 0.6)) return { key, text: 'Climb ladder', hold: null };
     if (this.interactives.nearestZipline(p.pos, R)) return { key, text: 'Ride zipline', hold: null };
+    const v = this.vehicles.nearest(p);
+    if (v) return { key, text: `Enter ${VEHICLES[v.kind].name}${v.seats[0] ? '' : ' (drive)'}`, hold: null };
     return null;
   }
 
@@ -756,8 +896,11 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
     this.interactives.update(dt);
     this.ai.update(dt);
     for (const s of this.soldiers) this.gadgets.stepSoldier(s, dt, this);
+    for (const s of this.soldiers) this.vehicleSeatInput(s);
+    this.vehicles.step(dt, this);
     for (const s of this.soldiers) {
       if (s.dummy && !s.alive) continue;
+      if (s.inVehicle) continue;
       if (s.piloting) this.holdForPilot(s);
       stepMovement(s, dt, this.moveCtx);
     }
@@ -771,6 +914,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       s.empT = Math.max(0, s.empT - dt);
     }
     this.physics.step();
+    this.vehicles.postPhysics(dt, this);
     this.pings.update(dt);
     this.mode?.update(dt);
     if (this.stepInFrame++ === 0) for (const s of this.soldiers) clearEdges(s.input);
@@ -834,6 +978,8 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       this.viewmodel.visible = false;
       this.viewmodel.update(frameDt, this.fp.camera, vm, this.renderer.aspect);
       this.hud?.root.classList.add('hidden');
+    } else if (p.inVehicle && !flags.tp && !flags.spectate) {
+      this.vehicleCamera(p, frameDt, alpha, vm);
     } else if (p.piloting && this.gadgets.droneOf(p)) {
       // Drone view: the camera rides the drone; the body stays behind.
       const d = this.gadgets.droneOf(p)!;
@@ -854,6 +1000,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
     this.water?.update(frameDt);
     this.gadgets.render(frameDt, alpha, this);
     this.callIns.render(alpha);
+    if (!p.inVehicle) this.vehicles.render(alpha);
     this.projectiles.render(this, alpha);
     this.throwables.render(alpha);
     this.vfx.update(frameDt);
@@ -911,10 +1058,66 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
   private spectated: Soldier | null = null;
   private spectateT = 0;
 
+  /** In a vehicle: seat view, or a chase camera behind the look direction (C toggles). */
+  private vehicleCamera(p: Soldier, frameDt: number, alpha: number, vm: ViewmodelState): void {
+    const v = this.vehicles.vehicleOf(p);
+    if (!v) return;
+    this.vehicles.render(alpha);
+    const cam = this.fp.camera;
+    const personal = this.personalWeaponSeat(p);
+    const look = viewDir(this.controller.yaw, this.controller.pitch, _v2);
+    const center = _v.copy(v.model.root.position).add(_right.set(0, v.model.centerY, 0).applyQuaternion(v.model.root.quaternion));
+    if (this.vehicleThirdPerson && !personal) {
+      const C = TUNING.vehicles.camera;
+      const want = center.clone().addScaledVector(look, -C.thirdDistance[v.kind]).add(_right.set(0, C.thirdHeight[v.kind], 0));
+      const gy = this.terrain.heightAt(want.x, want.z) + 1;
+      if (want.y < gy) want.y = gy;
+      if (!this.vehCamInit) {
+        this.vehCam.copy(want);
+        this.vehCamInit = true;
+      }
+      this.vehCam.lerp(want, 1 - Math.exp(-C.lerp * frameDt));
+      cam.position.copy(this.vehCam);
+      cam.lookAt(center.addScaledVector(look, 30));
+    } else {
+      const seat = _right.copy(v.model.seats[p.seat] ?? v.model.seats[0]).applyQuaternion(v.model.root.quaternion).add(v.model.root.position);
+      cam.position.set(seat.x, seat.y + 0.75, seat.z);
+      cam.rotation.set(this.controller.pitch, this.controller.yaw, 0, 'YXZ');
+      this.vehCamInit = false;
+    }
+    cam.updateMatrixWorld();
+    this.viewmodel.visible = personal;
+    this.viewmodel.update(frameDt, cam, vm, this.renderer.aspect);
+  }
+
   /** Debug spectator: over-the-shoulder view of a bot in a firefight (switches every few seconds). */
   private spectateCamera(frameDt: number, alpha: number, vm: ViewmodelState): void {
     this.spectateT += frameDt;
     if (flags.tp) this.spectated = this.player;
+    const kind = flags.spectateKind;
+    if (kind) {
+      // Chase a bot-driven vehicle of that kind.
+      const cur = this.spectated ? this.vehicles.vehicleOf(this.spectated) : null;
+      if (!cur || !cur.alive || cur.driver !== this.spectated) {
+        const v = this.vehicles.list.find((x) => x.alive && x.driver && !x.driver.isPlayer && (kind === 'vehicle' || x.kind === kind));
+        this.spectated = v?.driver ?? null;
+      }
+      const v = this.spectated ? this.vehicles.vehicleOf(this.spectated) : null;
+      if (v) {
+        const C = TUNING.vehicles.camera;
+        const r = v.model.root;
+        const back = C.thirdDistance[v.kind] * 1.3;
+        const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw);
+        const cam = this.fp.camera;
+        cam.position.set(r.position.x - fx * back, r.position.y + C.thirdHeight[v.kind] * 1.4, r.position.z - fz * back);
+        cam.lookAt(r.position.x + fx * 20, r.position.y, r.position.z + fz * 20);
+        cam.updateMatrixWorld();
+        this.viewmodel.visible = false;
+        this.viewmodel.update(frameDt, cam, vm, this.renderer.aspect);
+        this.hud?.root.classList.add('hidden');
+        return;
+      }
+    }
     const cur = this.spectated;
     if (!cur || !cur.alive || this.spectateT > 14) {
       let pick: Soldier | null = null;
@@ -938,6 +1141,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
   }
 
   private drawSoldier(s: Soldier, alpha: number, dt: number): void {
+    if (s.inVehicle && !this.vehicles.exposed(s)) return;
     const pos = this.renderPos.copy(s.prevPos).lerp(s.pos, alpha);
     const a = s.arsenal;
     const wid = a.current.id;
@@ -957,7 +1161,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext {
       kick: clamp(1 - (this.time - a.current.lastShotT) * 12, 0, 1),
       deadT: s.deadT,
       seed: s.deathSeed,
-      driving: false,
+      driving: s.inVehicle && s.seat === 0,
     });
     this.crowd.submit(s.team, s.cls, s.anim.out, Math.min(0.7, s.flashT * 6));
     if (s.anim.hasWeapon && s.alive) this.weaponCrowd.submit(wid, s.anim.weaponMatrix);

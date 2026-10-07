@@ -9,11 +9,14 @@ import { throwPitch } from './aim';
 import { chestPoint } from '../weapons/hitboxes';
 import type { BotBrain } from './brain';
 import type { GadgetSystem } from '../gadgets/system';
+import type { VehicleSystem } from '../vehicles/system';
+import type { Vehicle } from '../vehicles/vehicle';
 import type { Soldier } from '../player/soldier';
 import type { Rng } from '../core/rng';
 
 const GT = TUNING.gadgets;
 const B = TUNING.ai.gadgets;
+const CR = TUNING.ai.crews;
 
 interface Plan {
   t: number;
@@ -21,6 +24,8 @@ interface Plan {
   target: Soldier | null;
   aimYaw: number;
   aimPitch: number;
+  /** Friendly vehicle the Arc Tool is repairing (walk to it, then beam it). */
+  repair: Vehicle | null;
 }
 
 const _v = new THREE.Vector3();
@@ -32,11 +37,12 @@ export class BotGadgets {
     private gadgets: GadgetSystem,
     private soldiers: () => readonly Soldier[],
     private rng: Rng,
+    private vehicles: VehicleSystem | null = null,
   ) {}
 
   private plan(s: Soldier): Plan {
     let p = this.plans.get(s.id);
-    if (!p) this.plans.set(s.id, (p = { t: this.rng.next() * B.interval, phase: 'idle', target: null, aimYaw: 0, aimPitch: 0 }));
+    if (!p) this.plans.set(s.id, (p = { t: this.rng.next() * B.interval, phase: 'idle', target: null, aimYaw: 0, aimPitch: 0, repair: null }));
     return p;
   }
 
@@ -61,12 +67,17 @@ export class BotGadgets {
     }
     if (p.phase === 'beam') {
       const t = p.target;
-      if (!t || g.overheated || p.t <= 0) {
+      if (!t || g.overheated || p.t <= 0 || (p.repair && (!p.repair.alive || p.repair.hp >= p.repair.maxHp))) {
         inp.gadgetHeld = false;
         p.phase = 'idle';
         return;
       }
       p.t -= dt;
+      // Keep the beam on target (the body follows the snapped aim).
+      if (p.repair) this.aimAtVehicle(s, p.repair, p);
+      this.snap(s, p.aimYaw, p.aimPitch);
+      inp.yaw = p.aimYaw;
+      inp.pitch = p.aimPitch;
       inp.gadgetHeld = true;
       return;
     }
@@ -116,12 +127,18 @@ export class BotGadgets {
         let tgt: { pos: THREE.Vector3 } | null = null;
         for (const list of [this.gadgets.sentries, this.gadgets.walls, this.gadgets.caches, this.gadgets.drones] as { pos: THREE.Vector3; team: number }[][])
           for (const d of list) if (d.team !== s.team && d.pos.distanceTo(s.pos) < GT.arctool.range * 0.9) tgt = d;
-        if (!tgt) return;
+        if (!tgt) {
+          this.repairVehicles(b, p);
+          return;
+        }
         p.phase = 'beam';
         p.target = s;
+        p.repair = null;
         p.t = 2.5;
         const eye = s.eyePos;
-        this.snap(s, yawOf(tgt.pos.x - eye.x, tgt.pos.z - eye.z), Math.atan2(tgt.pos.y + 0.5 - eye.y, Math.hypot(tgt.pos.x - eye.x, tgt.pos.z - eye.z)));
+        p.aimYaw = yawOf(tgt.pos.x - eye.x, tgt.pos.z - eye.z);
+        p.aimPitch = Math.atan2(tgt.pos.y + 0.5 - eye.y, Math.hypot(tgt.pos.x - eye.x, tgt.pos.z - eye.z));
+        this.snap(s, p.aimYaw, p.aimPitch);
         inp.gadgetHeld = true;
         return;
       }
@@ -195,6 +212,54 @@ export class BotGadgets {
         return;
       }
     }
+  }
+
+  /** Engineers walk to a damaged friendly vehicle that sits still, then repair it with the Arc Tool. */
+  private repairVehicles(b: BotBrain, p: Plan): void {
+    const s = b.s;
+    const vs = this.vehicles;
+    if (!vs || b.mode === 'combat') {
+      this.dropRepair(b, p);
+      return;
+    }
+    let best: Vehicle | null = null;
+    let bd = CR.repairRange;
+    for (const v of vs.list) {
+      if (!v.alive || v.team !== s.team || v.hp >= v.maxHp * CR.repairBelow || Math.hypot(v.vel.x, v.vel.z) > 3) continue;
+      const d = vs.distToHull(v, s.pos);
+      if (d < bd) {
+        bd = d;
+        best = v;
+      }
+    }
+    if (!best) {
+      this.dropRepair(b, p);
+      return;
+    }
+    p.repair = best;
+    if (bd > GT.arctool.range * 0.7) {
+      b.detour = best.pos;
+      return;
+    }
+    if (b.detour === best.pos) b.detour = null;
+    p.phase = 'beam';
+    p.target = s;
+    p.t = 3;
+    this.aimAtVehicle(s, best, p);
+    this.snap(s, p.aimYaw, p.aimPitch);
+    s.input.gadgetHeld = true;
+  }
+
+  private dropRepair(b: BotBrain, p: Plan): void {
+    if (p.repair && b.detour === p.repair.pos) b.detour = null;
+    p.repair = null;
+  }
+
+  private aimAtVehicle(s: Soldier, v: Vehicle, p: Plan): void {
+    const eye = s.eyePos;
+    _v.copy(v.pos).setY(v.pos.y + v.model.centerY);
+    p.aimYaw = yawOf(_v.x - eye.x, _v.z - eye.z);
+    p.aimPitch = Math.atan2(_v.y - eye.y, Math.hypot(_v.x - eye.x, _v.z - eye.z));
   }
 
   /** Points the body (what the gadget system reads) for this tick. */

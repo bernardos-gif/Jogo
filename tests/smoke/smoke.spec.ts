@@ -2,7 +2,7 @@
 // Sector Control match driven by bot AI, runs it, and asserts zero console errors and a healthy
 // frame time. VF_SOAK=1 turns it into a long soak run (SOAK_MINUTES, default 10).
 import { test, expect, _electron as electron, type ConsoleMessage } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TUNING } from '../../src/config/tuning';
 
@@ -32,6 +32,9 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
   test.setTimeout((runSeconds + TUNING.test.bootTimeoutSeconds + 120) * 1000);
   const args = ['dist-electron/main.cjs', '--autoplay', '--smoke', `--size=${TUNING.test.windowSize}`];
   if (soak) args.push('--soak=1');
+  // Extra launch flags for a soak variant, e.g. SOAK_ARGS="--mode=skirmish --events=fast".
+  if (soak && process.env.SOAK_ARGS) args.push(...process.env.SOAK_ARGS.split(' ').filter(Boolean));
+  const tag = soak ? `soak${process.env.SOAK_TAG ?? ''}` : 'smoke';
   if (process.platform === 'linux' && process.getuid?.() === 0) args.unshift('--no-sandbox');
   const app = await electron.launch({ args, env: { ...process.env } as Record<string, string> });
   const errors: string[] = [];
@@ -78,8 +81,16 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
     { at: 0.89, name: 'menu' },
   ];
   const act = (name: string) => page.evaluate((n) => (window as unknown as { __vf: { act(n: string): boolean } }).__vf.act(n), name);
+  let logT = 0;
   while (Date.now() - t0 < runSeconds * 1000) {
     const elapsed = (Date.now() - t0) / 1000;
+    // Soak runs log the match state once a minute (balance and leak tracking).
+    if (soak && elapsed - logT >= 60) {
+      logT = elapsed;
+      const st = (await page.evaluate(() => (window as unknown as { __vf: { stats(): unknown } }).__vf.stats())) as SmokeStats & { kills: number; tickets: number[]; notes: string[] };
+      const mem = await page.evaluate(() => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0);
+      appendFileSync(join(outDir, `${tag}-log.txt`), `${elapsed.toFixed(0)}s sim=${st.matchTime.toFixed(0)} kills=${st.kills} tickets=${st.tickets.join('/')} storms=${st.stormEvents} vehicles=${st.vehiclesUsed} frame=${st.frameMsMedian.toFixed(0)} step=${st.simStepMsMedian.toFixed(1)} calls=${st.drawCalls} heap=${(mem / 1048576).toFixed(0)}MB errors=${errors.length} | ${st.notes.slice(1, 3).join(' | ')}\n`);
+    }
     const next = acts.find((a) => a.at * runSeconds > elapsed);
     const until = next ? next.at * runSeconds - elapsed : Infinity;
     await page.waitForTimeout(Math.max(10, Math.min(15000, until * 1000, runSeconds * 1000 - (Date.now() - t0) + 10)));
@@ -91,10 +102,10 @@ test(soak ? 'soak run' : 'smoke: autoplay Sector Control', async () => {
         await act(a.name);
       }
     }
-    if (shot < 6) await page.screenshot({ path: join(outDir, `${soak ? 'soak' : 'smoke'}-${shot++}.png`) }).catch(() => undefined);
+    if (shot < 6) await page.screenshot({ path: join(outDir, `${tag}-${shot++}.png`) }).catch(() => undefined);
   }
   const stats = (await page.evaluate(() => (window as unknown as { __vf: { stats(): unknown } }).__vf.stats())) as SmokeStats;
-  writeFileSync(join(outDir, `${soak ? 'soak' : 'smoke'}-stats.json`), JSON.stringify({ stats, errors }, null, 2));
+  writeFileSync(join(outDir, `${tag}-stats.json`), JSON.stringify({ stats, errors }, null, 2));
   console.log('STATS', JSON.stringify(stats));
   await app.close();
 

@@ -35,6 +35,8 @@ export interface CrewHost {
   switchSeat(s: Soldier, seat: number): boolean;
   requestCallIn(s: Soldier, kind: CallInKind): boolean;
   readonly mapLimit: number;
+  /** Map hazards (pilots steer around the storm). */
+  readonly hazards: readonly { x: number; z: number; r: number; label: string; danger: boolean }[];
 }
 
 type Target = { soldier: Soldier | null; vehicle: Vehicle | null };
@@ -109,8 +111,9 @@ export function steerToward(vehYaw: number, dx: number, dz: number): [number, nu
 /** Throttle for a heading error and distance to the goal (slows for turns and on arrival). */
 export function throttleFor(diff: number, distToGoal: number, arrive: number): number {
   const a = Math.abs(diff);
-  let t = a > 1.6 ? 0.35 : clamp(1 - a * 0.45, 0.4, 1);
-  if (distToGoal < arrive * 1.5) t = Math.min(t, clamp(distToGoal / (arrive * 1.5), 0.25, 1));
+  const T = C.throttle;
+  let t = a > T.sharpTurn ? T.sharpThrottle : clamp(1 - a * T.perRadian, T.min, 1);
+  if (distToGoal < arrive * T.arriveSlow) t = Math.min(t, clamp(distToGoal / (arrive * T.arriveSlow), T.arriveMin, 1));
   return t;
 }
 
@@ -232,7 +235,7 @@ export class VehicleCrews {
         if (d > C.joinRadius) continue;
         seat = v.seats.indexOf(null, 1);
         if (seat < 0) continue;
-        score = (drv.squadId === s.squadId ? 3 : 1.5) - d / 100;
+        score = (drv.squadId === s.squadId ? C.joinSquadBias : C.joinOtherBias) - d / 100;
       } else {
         if (trip < C.minTripDistance) continue;
         seat = 0;
@@ -283,7 +286,7 @@ export class VehicleCrews {
       b.aimOverride = false;
       st.avCheckT -= dt;
       if (st.avCheckT > 0) return;
-      st.avCheckT = 0.5 + h.rng.next() * 0.3;
+      st.avCheckT = C.launcherCheck * (1 + h.rng.next() * 0.6);
       if (lw.mag + lw.reserve <= 0) return;
       if (b.target && b.targetVisible && b.target.pos.distanceTo(s.pos) < C.launcherBusyRange) return;
       const eye = s.eyePos;
@@ -324,7 +327,7 @@ export class VehicleCrews {
     const dx = _aimPt.x - eye.x, dy = _aimPt.y - eye.y, dz = _aimPt.z - eye.z;
     const gy = yawOf(dx, dz), gp = Math.atan2(dy, Math.hypot(dx, dz));
     st.aim.update(dt, d, 0, b.suppression, h.profile, () => h.rng.next());
-    const err = 0.3;
+    const err = C.launcherAimError;
     [inp.yaw, inp.pitch] = turnToward(s.yaw, s.pitch, gy + st.aim.errYaw * err, gp + st.aim.errPitch * err, h.profile.turnSpeed * DEG * dt);
     inp.aim = true;
     if (lw.mag <= 0) {
@@ -332,7 +335,7 @@ export class VehicleCrews {
       return;
     }
     const off = Math.hypot(wrapAngle(s.yaw - gy), s.pitch - gp);
-    if (off < 0.05) st.avAligned += dt;
+    if (off < C.launcherAlign) st.avAligned += dt;
     else st.avAligned = 0;
     const dumb = d < C.dumbFireRange && st.avAligned > C.dumbFireAfter;
     if (st.aim.reactLeft <= 0 && (lw.locked || dumb) && !lw.reloading && a.equipT <= 0) {
@@ -360,7 +363,7 @@ export class VehicleCrews {
       else st.noDriverT += dt;
       if (st.noDriverT > C.noDriverSeconds) {
         if (!v.seats[0] && (v.kind !== 'wisp' || h.rng.next() < 0.5) && !this.arrivedAt(v, obj)) h.switchSeat(s, 0);
-        else if (Math.hypot(v.vel.x, v.vel.z) < 4) h.exitVehicle(s);
+        else if (Math.hypot(v.vel.x, v.vel.z) < C.exitSpeed) h.exitVehicle(s);
         st.noDriverT = 0;
         return;
       }
@@ -402,7 +405,7 @@ export class VehicleCrews {
       inp.jumpHeld = true;
       st.stuckT = 0;
       // Light vehicles drop their crew at the objective; the Basalt holds there and fights.
-      if (v.kind === 'wisp' && speed < 5) h.exitVehicle(s);
+      if (v.kind === 'wisp' && speed < C.exitSpeed) h.exitVehicle(s);
       return;
     }
     // Wait for boarding squadmates before leaving.
@@ -413,9 +416,9 @@ export class VehicleCrews {
     }
     // Path (re)requests.
     st.pathT -= dt;
-    if ((st.pathGoal.distanceTo(obj.pos) > 15 || (!b.path.length && st.pathT <= 0)) && !b.pathPending) {
+    if ((st.pathGoal.distanceTo(obj.pos) > C.repathDistance || (!b.path.length && st.pathT <= 0)) && !b.pathPending) {
       st.pathGoal.copy(obj.pos);
-      st.pathT = 3;
+      st.pathT = C.repathEvery;
       b.pathPending = true;
       h.requestPath(b, obj.pos);
     }
@@ -486,13 +489,14 @@ export class VehicleCrews {
     const groundHere = h.groundHeight(v.pos.x, v.pos.z);
     const alt = v.pos.y - groundHere;
     const fwd = viewDir(v.yaw, 0, _dir);
-    const groundAhead = Math.max(groundHere, h.groundHeight(v.pos.x + fwd.x * 40, v.pos.z + fwd.z * 40), h.groundHeight(v.pos.x + fwd.x * 90, v.pos.z + fwd.z * 90));
+    const [a1, a2] = C.terrainAhead;
+    const groundAhead = Math.max(groundHere, h.groundHeight(v.pos.x + fwd.x * a1, v.pos.z + fwd.z * a1), h.groundHeight(v.pos.x + fwd.x * a2, v.pos.z + fwd.z * a2));
     const center = obj?.pos ?? _v2.set(0, 0, 0);
     st.attackCd = Math.max(0, st.attackCd - dt);
     st.phaseT += dt;
     let heading = v.yaw;
     let wantAlt = C.flightAltitude;
-    let throttle = 0.85;
+    let throttle = C.cruiseThrottle;
     // Targets.
     st.retargetT -= dt;
     if (st.retargetT <= 0) {
@@ -509,7 +513,7 @@ export class VehicleCrews {
     }
     if (st.phase === 'climb') {
       wantAlt = C.takeoffAltitude + 4;
-      throttle = 0.15;
+      throttle = C.takeoffThrottle;
       if (obj) heading = yawOf(center.x - v.pos.x, center.z - v.pos.z);
       if (alt > C.takeoffAltitude) {
         st.phase = 'patrol';
@@ -521,7 +525,7 @@ export class VehicleCrews {
     } else if (st.phase === 'attack') {
       const t = st.target.vehicle ?? st.target.soldier;
       const alive = st.target.vehicle ? st.target.vehicle.alive && st.target.vehicle.crewCount > 0 : !!st.target.soldier?.alive;
-      if (!t || !alive || st.phaseT > 14) {
+      if (!t || !alive || st.phaseT > C.attackTimeout) {
         this.endAttack(st);
       } else {
         this.aimPoint(st.target, v.mounts[0]?.kind ?? 'rockets', v.pos, _aimPt);
@@ -557,6 +561,14 @@ export class VehicleCrews {
         st.phaseT = 0;
       }
     }
+    // Give the storm a wide berth.
+    for (const hz of h.hazards) {
+      if (hz.label !== 'Ion storm') continue;
+      if (Math.hypot(v.pos.x - hz.x, v.pos.z - hz.z) < hz.r * C.stormAvoidMul) {
+        heading = yawOf(v.pos.x - hz.x, v.pos.z - hz.z);
+        if (st.phase === 'attack') this.endAttack(st);
+      }
+    }
     // Stay inside the combat area.
     const lim = h.mapLimit - C.mapMargin;
     if (Math.abs(v.pos.x) > lim || Math.abs(v.pos.z) > lim) heading = yawOf(-v.pos.x, -v.pos.z);
@@ -568,8 +580,8 @@ export class VehicleCrews {
     if (st.phase !== 'attack') inp.pitch = -0.15;
     inp.moveZ = blocked ? 0.1 : throttle;
     inp.moveX = 0;
-    inp.jumpHeld = blocked || above < wantAlt - 3;
-    inp.sprint = !blocked && above > wantAlt + 8;
+    inp.jumpHeld = blocked || above < wantAlt - C.altitudeBand[0];
+    inp.sprint = !blocked && above > wantAlt + C.altitudeBand[1];
   }
 
   private endAttack(st: CrewState): void {

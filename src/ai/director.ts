@@ -146,6 +146,9 @@ export class AIDirector implements BotWorld, CrewHost {
   get mapLimit(): number {
     return this.host.mapLimit;
   }
+  get hazards(): readonly Hazard[] {
+    return this.host.hazards;
+  }
   groundHeight(x: number, z: number): number {
     return this.host.groundHeight(x, z);
   }

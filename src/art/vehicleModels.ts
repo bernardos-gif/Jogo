@@ -106,12 +106,13 @@ function wisp(team: TeamId, gm: THREE.MeshBasicMaterial): VehicleModel {
   k.b(2.1, 0.12, 3.7, P.dark, { y: 0.38 });
   k.b(1.8, 0.25, 0.4, P.vehicleShade, { y: 0.78, z: 1.6 });
   // Roll cage.
+  // Tall enough that seated heads (and first-person cameras) sit under the top rails.
   for (const x of [-0.85, 0.85]) {
-    k.b(0.08, 1.1, 0.08, P.dark, { x, y: 1.25, z: 0.3 });
-    k.b(0.08, 0.08, 1.6, P.dark, { x, y: 1.78, z: -0.35 });
-    k.b(0.08, 0.9, 0.08, P.dark, { x, y: 1.3, z: -1.1, rx: 0.5 });
+    k.b(0.08, 1.4, 0.08, P.dark, { x, y: 1.4, z: 0.3 });
+    k.b(0.08, 0.08, 1.6, P.dark, { x, y: 2.08, z: -0.35 });
+    k.b(0.08, 1.2, 0.08, P.dark, { x, y: 1.45, z: -1.1, rx: 0.42 });
   }
-  k.b(1.78, 0.08, 0.08, P.dark, { y: 1.78, z: 0.3 });
+  k.b(1.78, 0.08, 0.08, P.dark, { y: 2.08, z: 0.3 });
   // Seats.
   k.b(0.55, 0.15, 0.55, P.dark, { x: 0.45, y: 0.85, z: -0.2 });
   k.b(0.55, 0.6, 0.12, P.dark, { x: 0.45, y: 1.15, z: 0.08 });

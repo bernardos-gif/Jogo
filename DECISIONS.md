@@ -115,6 +115,13 @@ One line per choice. Newest entries are appended at the end of each section.
 
 ## Skirmish
 
-- Skirmish is a fast infantry mode: 8 v 8 in and around Core Plaza (five drop points: the plaza and four points 95 m out), first to 75 kills or the most kills after 15 minutes, 4 s respawns, no vehicles or airdrops. Ownership of a drop point follows whoever stands at it, which is what the bots chase, so squads keep running into each other.
+- Skirmish is a fast infantry mode: 8 v 8 in and around Core Plaza (five drop points: the plaza and four points 95 m out), first to 100 kills (about 9 minutes with bots) or the most kills after 15 minutes, 4 s respawns, no vehicles or airdrops. Ownership of a drop point follows whoever stands at it, which is what the bots chase, so squads keep running into each other.
 - Deaths without an enemy killer (storm, lightning, falls, suicides) count for the other team.
+
+## Balance and release (M12)
+
+- Sector Control starts at 450 tickets with a bleed of 0.3, 0.55, 0.85, 1.2 and 1.7 tickets per second for a sector lead of 1 to 5. Soak data at 24 v 24 showed the losing team draining about 21 tickets a minute on the old values (600 tickets), which put rounds near 29 minutes; the new values aim at 15 to 20 minutes.
+- Bot pilots keep 2.5 storm pull radii away from the ion storm; ground bots run from it inside 75 m.
+- The Wisp's roll cage is tall enough that first-person cameras in its seats sit under the top rails.
+- The packaged app is ad-hoc signed (no Apple Developer ID or notarization is available here), so the first launch needs System Settings → Privacy & Security → Open Anyway, as the README explains.
 

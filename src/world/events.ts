@@ -175,10 +175,10 @@ export class WorldEvents {
     const r = this.rng;
     const lim = TUNING.movement.mapLimit - 30;
     const side = r.next() < 0.5 ? -1 : 1;
-    this.stormPos.set(side * lim, 0, r.range(-260, 260));
+    this.stormPos.set(side * lim, 0, r.range(-S.startSpread, S.startSpread));
     const targets = h.stormTargets();
     const tg = targets.length ? targets[Math.floor(r.next() * targets.length)] : { x: 0, z: 0 };
-    this.stormDir.set(tg.x + r.range(-30, 30) - this.stormPos.x, 0, tg.z + r.range(-30, 30) - this.stormPos.z).normalize();
+    this.stormDir.set(tg.x + r.range(-S.aimJitter, S.aimJitter) - this.stormPos.x, 0, tg.z + r.range(-S.aimJitter, S.aimJitter) - this.stormPos.z).normalize();
     this.stormPos.y = h.groundHeight(this.stormPos.x, this.stormPos.z);
     this.stormPrev.copy(this.stormPos);
     this.stormPhase = 'warn';
@@ -207,7 +207,7 @@ export class WorldEvents {
       this.stormPos.y = h.groundHeight(this.stormPos.x, this.stormPos.z);
       const lim = TUNING.movement.mapLimit + 40;
       const leaving = Math.abs(this.stormPos.x) > lim - 60 || Math.abs(this.stormPos.z) > lim - 60 || this.stormT > S.maxSeconds - 10;
-      this.stormIntensity = leaving ? Math.max(0, this.stormIntensity - dt / 10) : Math.min(1, this.stormIntensity + dt / 6);
+      this.stormIntensity = leaving ? Math.max(0, this.stormIntensity - dt / S.fadeOut) : Math.min(1, this.stormIntensity + dt / S.fadeIn);
       if ((leaving && this.stormIntensity <= 0) || this.stormT > S.maxSeconds) {
         this.stormPhase = this.stormAt.length ? 'idle' : 'done';
         this.stormIntensity = 0;
@@ -282,12 +282,12 @@ export class WorldEvents {
     // Mostly random ground near the storm, sometimes a soldier caught out in the open.
     let x: number, z: number;
     const victims = h.soldiers.filter((s) => s.alive && !s.inVehicle && Math.hypot(s.pos.x - c.x, s.pos.z - c.z) < S.strikeRadius);
-    if (victims.length && r.next() < 0.3) {
+    if (victims.length && r.next() < S.victimChance) {
       const v = victims[Math.floor(r.next() * victims.length)];
       x = v.pos.x + r.range(-4, 4);
       z = v.pos.z + r.range(-4, 4);
     } else {
-      const a = r.next() * Math.PI * 2, d = 10 + Math.sqrt(r.next()) * S.strikeRadius;
+      const a = r.next() * Math.PI * 2, d = S.strikeMinDistance + Math.sqrt(r.next()) * S.strikeRadius;
       x = c.x + Math.cos(a) * d;
       z = c.z + Math.sin(a) * d;
     }

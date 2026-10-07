@@ -17,7 +17,7 @@ import { Trail } from '../render/vfx';
 import { setStance, teleport } from '../player/movement';
 import type { Hit, RayTargetSet, CollisionWorld } from '../physics/collision';
 import type { Soldier } from '../player/soldier';
-import type { TeamId, VehicleKind } from '../config/content';
+import { VEHICLES, type TeamId, type VehicleKind } from '../config/content';
 import type { HqDef } from '../world/maps/breakwater/layout';
 
 const V = TUNING.vehicles;
@@ -216,7 +216,7 @@ export class VehicleSystem implements RayTargetSet {
     s.state = v.aircraft && out.y - ctx.groundHeight(out.x, out.z) > 4 ? 'air' : 'ground';
     s.collider?.setEnabled(true);
     teleport(s, out);
-    s.vel.copy(v.vel).multiplyScalar(0.5);
+    s.vel.copy(v.vel).multiplyScalar(V.handling.exitCarry);
     s.fallStartY = s.pos.y;
     setStance(s, 'stand', ctx.physics);
     return true;
@@ -229,7 +229,7 @@ export class VehicleSystem implements RayTargetSet {
       p.respawnT -= dt;
       if (p.respawnT <= 0) {
         // Only when the pad is clear.
-        const blocked = this.list.some((v) => v.pos.distanceTo(p.pos) < 6);
+        const blocked = this.list.some((v) => v.pos.distanceTo(p.pos) < V.handling.padClearRadius);
         if (!blocked) {
           p.vehicle = this.spawn(p.kind, p.team, p.pos, p.yaw, ctx.physics);
           p.vehicle.pad = { pos: p.pos, yaw: p.yaw, team: p.team };
@@ -317,8 +317,8 @@ export class VehicleSystem implements RayTargetSet {
     const target = throttle > 0 ? T.maxSpeed * throttle * eng : throttle < 0 ? -T.reverseSpeed : 0;
     const rate = brake || Math.sign(target) !== Math.sign(vf) ? T.brake : T.accel;
     vf += clamp(target - vf, -rate * dt, rate * dt);
-    if (brake) vf *= Math.max(0, 1 - 2 * dt);
-    vr *= Math.exp(-(v.grounded ? T.grip : T.grip * 0.2) * dt);
+    if (brake) vf *= Math.max(0, 1 - V.handling.brakeDecay * dt);
+    vr *= Math.exp(-(v.grounded ? T.grip : T.grip * V.handling.airGripMul) * dt);
     vf *= 1 - T.drag * dt * 0.1;
     const turnK = clamp(Math.abs(vf) / 4 + 0.35, 0, 1) * mob;
     v.yaw -= steer * T.turnRate * turnK * dt * (vf < -0.5 ? -1 : 1);
@@ -353,19 +353,20 @@ export class VehicleSystem implements RayTargetSet {
       _v.copy(_fwd).multiplyScalar(inp.moveZ * fwdSpeed * eng).addScaledVector(_right, inp.moveX * fwdSpeed * 0.45 * eng);
       _v.y = climb;
       // Forward flight keeps a little speed and loses no altitude.
-      if (isCondor && v.forwardFlight && inp.moveZ <= 0) _v.addScaledVector(_fwd, fwdSpeed * 0.35);
-      v.vel.lerp(_v, Math.min(1, T.accel * dt * 0.25));
+      if (isCondor && v.forwardFlight && inp.moveZ <= 0) _v.addScaledVector(_fwd, fwdSpeed * V.handling.cruiseGlide);
+      v.vel.lerp(_v, Math.min(1, T.accel * dt * V.handling.flightResponse));
       const tp = -inp.moveZ * T.maxPitch * (isCondor && v.forwardFlight ? 0.5 : 1);
       const tr = -inp.moveX * T.maxRoll - dy * 0.6;
       v.pitch += (tp - v.pitch) * Math.min(1, T.pitchRate * dt);
       v.roll += (clamp(tr, -T.maxRoll, T.maxRoll) - v.roll) * Math.min(1, T.pitchRate * dt);
       // Ground cushion: no flying into the ground while the pilot is not descending.
-      if (alt < T.minAltitude && v.vel.y < 0 && !inp.sprint) v.vel.y *= 0.5;
+      if (alt < T.minAltitude && v.vel.y < 0 && !inp.sprint) v.vel.y *= V.handling.groundCushion;
     } else {
       // Unmanned: settle down.
-      v.vel.x *= Math.max(0, 1 - dt * 0.8);
-      v.vel.z *= Math.max(0, 1 - dt * 0.8);
-      v.vel.y = alt > 0.5 ? Math.max(v.vel.y - 6 * dt, -6) : 0;
+      const H = V.handling;
+      v.vel.x *= Math.max(0, 1 - dt * H.unmannedDrag);
+      v.vel.z *= Math.max(0, 1 - dt * H.unmannedDrag);
+      v.vel.y = alt > 0.5 ? Math.max(v.vel.y - H.unmannedSink * dt, -H.unmannedSink) : 0;
       v.pitch *= 0.95;
       v.roll *= 0.95;
     }
@@ -419,8 +420,8 @@ export class VehicleSystem implements RayTargetSet {
         for (const s of ctx.soldiers) {
           if (!s.alive || s.inVehicle || (drv && s.team === drv.team)) continue;
           if (this.distToHull(v, _v3.copy(s.pos).setY(s.pos.y + 0.9)) > 0.4) continue;
-          damageSoldier(ctx, s, speed * V.roadkillDamage, { attacker: drv, weapon: v.kind, part: 'body', explosive: false, from: v.pos.clone(), armorMul: 1 });
-          s.vel.copy(v.vel).multiplyScalar(0.8).setY(4);
+          damageSoldier(ctx, s, speed * V.roadkillDamage, { attacker: drv, weapon: VEHICLES[v.kind].name, part: 'body', explosive: false, from: v.pos.clone(), armorMul: 1 });
+          s.vel.copy(v.vel).multiplyScalar(V.handling.roadkillCarry).setY(V.handling.roadkillToss);
         }
       }
       // Occupants ride along.
@@ -458,10 +459,10 @@ export class VehicleSystem implements RayTargetSet {
       if (!s || !m.kind || m.kind === 'personal') continue;
       // Aim: turret and chin mounts traverse toward the occupant's look.
       const relYaw = wrapAngle(s.input.yaw - v.yaw);
-      const speed = m.kind === 'cannon' ? V.basalt.turretSpeed : m.kind === 'chin' ? V.condor.chinSpeed : 6;
+      const speed = m.kind === 'cannon' ? V.basalt.turretSpeed : m.kind === 'chin' ? V.condor.chinSpeed : V.handling.gunTraverse;
       m.yaw += clamp(wrapAngle(relYaw - m.yaw), -speed * dt, speed * dt);
-      const pMin = m.kind === 'cannon' ? V.basalt.barrelMin : m.kind === 'chin' ? V.condor.chinPitchMin : -1.2;
-      const pMax = m.kind === 'cannon' ? V.basalt.barrelMax : m.kind === 'chin' ? V.condor.chinPitchMax : 0.6;
+      const pMin = m.kind === 'cannon' ? V.basalt.barrelMin : m.kind === 'chin' ? V.condor.chinPitchMin : V.handling.gunPitch[0];
+      const pMax = m.kind === 'cannon' ? V.basalt.barrelMax : m.kind === 'chin' ? V.condor.chinPitchMax : V.handling.gunPitch[1];
       m.pitch += clamp(clamp(s.input.pitch - v.pitch, pMin, pMax) - m.pitch, -speed * dt, speed * dt);
       if (v.empT > 0) continue;
       this.fireMount(v, m, s, crippled, ctx);
@@ -497,13 +498,13 @@ export class VehicleSystem implements RayTargetSet {
       ctx.events.emit('mountShot', { soldier: s, kind: 'cannon', pos: mz.clone() });
       m.ammo = 0;
       m.reloadT = C.reload;
-      m.cooldown = 0.2;
+      m.cooldown = C.refire;
       s.lastCombatT = ctx.time;
       return;
     }
     if (m.kind === 'rockets') {
       const R = VW.rockets;
-      if (inp.firePressed && m.ammo > 0 && m.salvoLeft <= 0) m.salvoLeft = Math.min(4, m.ammo);
+      if (inp.firePressed && m.ammo > 0 && m.salvoLeft <= 0) m.salvoLeft = Math.min(R.burst, m.ammo);
       if (m.salvoLeft <= 0 || m.cooldown > 0) return;
       this.muzzle(v, m, mz, dir);
       coneDir(dir, R.spread, ctx.rng.next(), ctx.rng.next(), _v3);
@@ -546,7 +547,7 @@ export class VehicleSystem implements RayTargetSet {
       }
     }
     s.lastCombatT = ctx.time;
-    s.firedUntil = ctx.time + 1.2;
+    s.firedUntil = ctx.time + V.handling.firingHeard;
   }
 
   // ---- Countermeasures and locks -------------------------------------------------------------
@@ -619,7 +620,7 @@ export class VehicleSystem implements RayTargetSet {
     if (attacker) v.lastAttacker = attacker;
     for (const s of v.seats) if (s) s.lastCombatT = ctx.time;
     // Heavy hits can damage a component.
-    if ((explosive || amount > 60) && ctx.rng.next() < V.componentChance) {
+    if ((explosive || amount > V.componentHitMin) && ctx.rng.next() < V.componentChance) {
       const keys = ['engine', 'weapons', 'mobility'] as const;
       const k = keys[Math.floor(ctx.rng.next() * 3)];
       v.comps[k] = Math.max(0, v.comps[k] - V.componentDamage);
@@ -634,7 +635,7 @@ export class VehicleSystem implements RayTargetSet {
     if (ref.team === by.team || ref.crewCount === 0) {
       const before = ref.hp;
       ref.hp = Math.min(ref.maxHp, ref.hp + A.repairPerSecond * dt);
-      for (const k of ['engine', 'weapons', 'mobility'] as const) ref.comps[k] = Math.min(1, ref.comps[k] + dt * 0.25);
+      for (const k of ['engine', 'weapons', 'mobility'] as const) ref.comps[k] = Math.min(1, ref.comps[k] + dt * V.arcComponentRepair);
       const fixed = ref.hp - before;
       if (fixed > 0) {
         by.stats.score += fixed * TUNING.sector.score.repairPerPoint;
@@ -642,7 +643,7 @@ export class VehicleSystem implements RayTargetSet {
       }
     } else {
       this.damage(ref, A.empPerSecond * dt, by, ctx, false);
-      ref.empT = Math.max(ref.empT, A.disable * 0.25);
+      ref.empT = Math.max(ref.empT, A.disable * V.arcEmpShare);
     }
     return true;
   }
@@ -664,9 +665,9 @@ export class VehicleSystem implements RayTargetSet {
       const s = v.seats[i];
       if (!s) continue;
       this.exit(s, ctx, true);
-      damageSoldier(ctx, s, 999, { attacker: killer, weapon: `${v.kind} wreck`, part: null, explosive: true, from: center, armorMul: 1 });
+      damageSoldier(ctx, s, 999, { attacker: killer, weapon: `${VEHICLES[v.kind].name} wreck`, part: null, explosive: true, from: center, armorMul: 1 });
     }
-    explode(ctx, center, { radius: X.radius, damage: X.damage, inner: X.inner, attacker: killer, weapon: `${v.kind} explosion`, kind: 'fuel', vehicleDamage: X.vehicleDamage });
+    explode(ctx, center, { radius: X.radius, damage: X.damage, inner: X.inner, attacker: killer, weapon: `${VEHICLES[v.kind].name} explosion`, kind: 'fuel', vehicleDamage: X.vehicleDamage });
     ctx.vfx.debris(center, [0x2e3038, 0x5a5f6e, 0x1a1a1e], 18, { size: [0.2, 0.7], speed: [4, 12], up: 6 });
     // The wreck's lights die.
     v.model.glowMat.color.setRGB(0.05, 0.03, 0.03);

@@ -268,6 +268,14 @@ export const TUNING = {
       secondChance: 0.5,
       warnSeconds: 20,
       speed: 8.5,
+      /** Start point spread along the edge, aim jitter at the target sector, fade in and out. */
+      startSpread: 260,
+      aimJitter: 30,
+      fadeIn: 6,
+      fadeOut: 10,
+      /** Share of lightning strikes that go for a soldier caught in the open. */
+      victimChance: 0.3,
+      strikeMinDistance: 10,
       /** Length of the crossing (the storm fades at the far edge). */
       maxSeconds: 150,
       /** Pull radius, lift core and damage core. */
@@ -432,9 +440,9 @@ export const TUNING = {
       respawn: 90,
     },
     weapons: {
-      cannon: { damage: 140, splashDamage: 95, splashRadius: 5, vehicleDamage: 420, velocity: 260, gravityMul: 0.35, reload: 3.6 },
+      cannon: { damage: 140, splashDamage: 95, splashRadius: 5, vehicleDamage: 420, velocity: 260, gravityMul: 0.35, reload: 3.6, refire: 0.2 },
       coax: { damage: [16, 11] as [number, number], rpm: 760, heatPerShot: 0.012, cool: 0.35, velocity: 1100, spread: 0.5, vehicleMul: 0.12 },
-      rockets: { salvo: 14, interval: 0.11, reload: 7, damage: 70, splashDamage: 70, splashRadius: 4, vehicleDamage: 180, velocity: 140, spread: 1.6 },
+      rockets: { salvo: 14, burst: 4, interval: 0.11, reload: 7, damage: 70, splashDamage: 70, splashRadius: 4, vehicleDamage: 180, velocity: 140, spread: 1.6 },
       chin: { damage: [30, 22] as [number, number], rpm: 360, heatPerShot: 0.03, cool: 0.35, velocity: 700, spread: 0.6, splashDamage: 18, splashRadius: 1.8, vehicleMul: 0.3 },
       minigun: { damage: [14, 9] as [number, number], rpm: 1800, heatPerShot: 0.006, cool: 0.4, velocity: 900, spread: 1.0, vehicleMul: 0.12 },
       doorgun: { damage: [17, 12] as [number, number], rpm: 700, heatPerShot: 0.01, cool: 0.35, velocity: 950, spread: 0.7, vehicleMul: 0.1 },
@@ -444,6 +452,11 @@ export const TUNING = {
     /** Hull damage that hits a component (engine, weapons, mobility) and how hard. */
     componentChance: 0.45,
     componentDamage: 0.4,
+    /** Non-explosive hits below this damage never reach a component. */
+    componentHitMin: 60,
+    /** Arc Tool: component repair per second (fraction) and the EMP share of an overload. */
+    arcComponentRepair: 0.25,
+    arcEmpShare: 0.25,
     /** Component health below this cripples it. */
     componentCrippled: 0.3,
     crippledSpeedMul: 0.5,
@@ -469,6 +482,32 @@ export const TUNING = {
     /** Lock warning lasts this long after the last lock tick. */
     lockWarnHold: 0.3,
     camera: { thirdDistance: { wisp: 7, basalt: 10, condor: 15, midge: 11 } as Record<string, number>, thirdHeight: { wisp: 2.8, basalt: 4, condor: 4.5, midge: 3.2 } as Record<string, number>, lerp: 8 },
+    /** Handling details shared by the arcade models. */
+    handling: {
+      /** Fraction of the vehicle's velocity a soldier keeps when stepping out. */
+      exitCarry: 0.5,
+      /** A pad respawns its vehicle only when nothing is parked within this radius. */
+      padClearRadius: 6,
+      /** Braking bleeds this fraction of forward speed per second on top of the brake rate. */
+      brakeDecay: 2,
+      /** Lateral grip multiplier while a hover vehicle is airborne. */
+      airGripMul: 0.2,
+      /** Aircraft velocity response (fraction of accel per tick) and cruise glide when off the stick. */
+      flightResponse: 0.25,
+      cruiseGlide: 0.35,
+      groundCushion: 0.5,
+      /** Unmanned aircraft drift to a stop and sink at this rate. */
+      unmannedDrag: 0.8,
+      unmannedSink: 6,
+      /** Run-over: carried fraction of the vehicle's velocity and the upward toss. */
+      roadkillCarry: 0.8,
+      roadkillToss: 4,
+      /** Mount traverse speed and pitch range for guns without their own (miniguns, door gun). */
+      gunTraverse: 6,
+      gunPitch: [-1.2, 0.6] as [number, number],
+      /** Seconds the gunner counts as firing (bots hear it). */
+      firingHeard: 1.2,
+    },
   },
 
   // ---------------------------------------------------------------------------------------------
@@ -489,10 +528,11 @@ export const TUNING = {
   // ---------------------------------------------------------------------------------------------
   // Sector Control (capture, tickets, squads, spawning, round flow)
   sector: {
-    tickets: 600,
+    /** Balanced for 15-20 minute rounds at 24 v 24 (about 25 tickets a minute for the losing team). */
+    tickets: 450,
     ticketsPerDeath: 1,
     /** Tickets per second the minority team loses, indexed by the zone-count lead (0..5). */
-    bleed: [0, 0.22, 0.45, 0.75, 1.05, 1.5],
+    bleed: [0, 0.3, 0.55, 0.85, 1.2, 1.7],
     /** Seconds for one attacker to take a zone from neutral to owned. */
     captureSeconds: 24,
     /** Each extra attacker adds this fraction of the base rate, up to maxCaptureMul. */
@@ -550,7 +590,7 @@ export const TUNING = {
   // Skirmish (team deathmatch on the fenced Core Plaza)
   skirmish: {
     teamSize: 8,
-    killTarget: 75,
+    killTarget: 100,
     respawnDelay: 4,
     timeLimit: 900,
     /** The arena: five drop points, Core Plaza and four around it at this distance. */
@@ -813,6 +853,27 @@ export const TUNING = {
       /** Engineers walk to damaged friendly vehicles and repair them. */
       repairRange: 35,
       repairBelow: 0.8,
+      /** Driver throttle: heading error past sharpTurn crawls, otherwise eases off per radian; slows inside arriveSlow arrive radii. */
+      throttle: { sharpTurn: 1.6, sharpThrottle: 0.35, perRadian: 0.45, min: 0.4, arriveSlow: 1.5, arriveMin: 0.25 },
+      /** Boarding preference: a squadmate's vehicle over another friendly's (score per 100 m of walk lost). */
+      joinSquadBias: 3,
+      joinOtherBias: 1.5,
+      /** Crews leave a vehicle once it is slower than this. */
+      exitSpeed: 4.5,
+      repathEvery: 3,
+      repathDistance: 15,
+      /** Launcher: re-check interval, aim error scale (vehicles are big) and the alignment for dumb fire. */
+      launcherCheck: 0.5,
+      launcherAimError: 0.3,
+      launcherAlign: 0.05,
+      /** Pilots: cruise throttle, how far ahead they read the terrain, the altitude band and the attack-run timeout. */
+      cruiseThrottle: 0.85,
+      takeoffThrottle: 0.15,
+      terrainAhead: [40, 90] as [number, number],
+      altitudeBand: [3, 8] as [number, number],
+      attackTimeout: 14,
+      /** Pilots turn away from the storm inside this many pull radii. */
+      stormAvoidMul: 2.5,
     },
     /** Bot gadget decisions. */
     gadgets: { interval: 0.6, healRange: 35, healBelow: 70, selfHealBelow: 55, shieldSuppression: 0.35, cacheRadius: 12, droneRange: 140, sensorMin: 12, sensorMax: 45, grappleRise: 5 },

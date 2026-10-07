@@ -267,14 +267,21 @@ function addSight(main: Parts, optic: Parts, sight: SightId, x: number, rail: nu
       add(main, box(0.006, 0.045, 0.012, W.dark, { x: x - 0.018, y: rail + 0.032, z: z + 0.02 }));
       add(main, box(0.006, 0.045, 0.012, W.dark, { x: x + 0.018, y: rail + 0.032, z: z + 0.02 }));
       add(main, box(0.042, 0.008, 0.012, W.dark, { x, y: rail + 0.056, z: z + 0.02 }));
-      glow(optic, box(0.004, 0.004, 0.002, 0xff3a5c, { x, y: rail + 0.035, z: z + 0.02 }));
+      // The red dot itself is drawn by the HUD at the exact aim point while aiming (a 3D dot this
+      // close to the eye renders far too large); only a faint emitter glints on the frame.
+      glow(optic, box(0.003, 0.002, 0.002, 0xff3a5c, { x, y: rail + 0.014, z: z + 0.03 }));
       a.sight.set(x, rail + 0.035, z);
       break;
     case 'prism2':
-      add(main, box(0.045, 0.05, 0.09, W.body, { x, y: rail + 0.03, z }));
-      add(main, box(0.05, 0.012, 0.1, W.dark, { x, y: rail + 0.06, z }));
-      glow(optic, box(0.03, 0.03, 0.004, lens, { x, y: rail + 0.032, z: z + 0.046 }));
-      a.sight.set(x, rail + 0.032, z);
+      // Open housing: base, side walls and a top strap around a clear window, thin lens rims.
+      add(main, box(0.058, 0.01, 0.09, W.body, { x, y: rail + 0.005, z }));
+      for (const sx of [-1, 1]) add(main, box(0.007, 0.052, 0.09, W.body, { x: x + sx * 0.0255, y: rail + 0.032, z }));
+      add(main, box(0.062, 0.01, 0.1, W.dark, { x, y: rail + 0.062, z }));
+      for (const dz of [-0.046, 0.046]) {
+        glow(optic, box(0.044, 0.0015, 0.002, lens, { x, y: rail + 0.0105, z: z + dz }));
+        glow(optic, box(0.044, 0.0015, 0.002, lens, { x, y: rail + 0.0565, z: z + dz }));
+      }
+      a.sight.set(x, rail + 0.033, z);
       break;
     case 'optic4':
     case 'optic8':

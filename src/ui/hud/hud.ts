@@ -2,7 +2,7 @@
 // weapon panel, crosshair and hit markers, damage arcs, grenade warnings, capture ring, prompts,
 // ammo cues, kill feed, score stack, banners, world markers, comms rose, scopes, attachment menu,
 // scoreboard and full map) and routes gameplay events to them.
-import { h, setText, toggle } from '../dom';
+import { h, setStyle, setText, toggle } from '../dom';
 import { TUNING } from '../../config/tuning';
 import { ZONES } from '../../config/content';
 import { Crosshair } from './crosshair';
@@ -47,6 +47,8 @@ export class Hud {
   readonly weapon: WeaponPanel;
   readonly attachments: AttachmentMenu;
   readonly scope: ScopeOverlay;
+  /** Red dot / prism reticle drawn at the exact aim point while aiming down sights. */
+  private adsReticle: HTMLDivElement;
   readonly topbar: TopBar;
   readonly minimap: Minimap;
   readonly killFeed: KillFeed;
@@ -83,6 +85,10 @@ export class Hud {
     parent.appendChild(this.root);
     this.markers = new WorldMarkers(this.root);
     this.scope = new ScopeOverlay(this.root);
+    this.adsReticle = h('div', { class: 'ads-reticle hidden' }, h('i', { class: 'ads-ring' }), h('i', { class: 'ads-dot' }));
+    this.adsReticle.style.setProperty('--ads-dot', `${TUNING.ui.adsDotPx}px`);
+    this.adsReticle.style.setProperty('--ads-ring', `${TUNING.ui.adsRingPx}px`);
+    this.root.appendChild(this.adsReticle);
     this.arcs = new DamageArcs(this.root);
     this.crosshair = new Crosshair(this.root);
     this.grenades = new GrenadeWarnings(this.root);
@@ -212,7 +218,15 @@ export class Hud {
     toggle(this.root, 'no-weapon', !!veh && !veh.personal && !veh.mount);
     this.vehicleHud.update(veh, f.time);
     const wpn = f.arsenal.current;
-    this.scope.update(f.scoped, wpn.att.sight, f.zoom, f.rangeM, f.time);
+    this.scope.update(f.scoped, wpn.att.sight, f.zoom, f.rangeM);
+    const sightId = wpn.att.sight;
+    const from = TUNING.ui.adsShowFrom;
+    const dot = !f.scoped && p.active && !this.attachments.open && f.arsenal.adsK > from && (sightId === 'holo' || sightId === 'prism2');
+    toggle(this.adsReticle, 'hidden', !dot);
+    if (dot) {
+      this.adsReticle.dataset.sight = sightId;
+      setStyle(this.adsReticle, 'opacity', ((f.arsenal.adsK - from) / (1 - from)).toFixed(2));
+    }
     this.crosshair.update(f.dt, f.spread, f.vfov, f.screenH, wpn.stats.category, f.arsenal.adsK, !f.scoped && !this.attachments.open && !this.comms.open && !this.tablet.open && p.active, f.enemyUnderCrosshair);
     this.weapon.update(p, f.arsenal, f.gadget);
     this.arcs.update(f.dt, p);

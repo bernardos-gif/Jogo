@@ -43,13 +43,15 @@ const _v = new THREE.Vector3();
 /** Current spread cone (degrees) for a soldier with a weapon. */
 export function currentSpread(s: Soldier, a: Arsenal, w: WeaponState, speed: number): number {
   const st = w.stats;
-  let base = st.hip + (st.ads - st.hip) * a.adsK;
-  base += st.move * clamp(speed / TUNING.movement.walkSpeed, 0, 1.4) * (1 - a.adsK * 0.6);
+  let base = st.hip + (st.ads * W.adsSpreadMul - st.hip) * a.adsK;
+  base += st.move * clamp(speed / TUNING.movement.walkSpeed, 0, 1.4) * (1 - a.adsK * (1 - W.adsMoveKeep));
   const ss = W.stanceSpread;
   let mul = s.stance === 'prone' ? ss.prone : s.stance === 'crouch' ? ss.crouch : ss.stand;
   if (s.state === 'air' || s.state === 'parachute' || s.state === 'zipline') mul = ss.air;
   else if (s.state === 'slide') mul = ss.slide;
-  return Math.max(0, base * mul + w.bloom);
+  // Bloom built up while aiming is capped lower (aimed bursts stay tight).
+  const bloom = Math.min(w.bloom, st.bloomMax * (1 - a.adsK * (1 - W.adsBloomCapMul)));
+  return Math.max(0, base * mul + bloom);
 }
 
 export class WeaponSystem {
@@ -220,7 +222,7 @@ export class WeaponSystem {
     ctx.applyRecoil(s, k.v * DEG, -k.h * DEG);
     w.recoilAccum += k.v * DEG;
     w.shot++;
-    w.bloom = Math.min(st.bloomMax, w.bloom + (a.adsK > 0.5 ? st.bloom : st.bloomHip));
+    w.bloom = Math.min(st.bloomMax, w.bloom + (a.adsK > 0.5 ? st.bloom * W.adsBloomMul : st.bloomHip));
     s.firedUntil = ctx.time + (st.suppressed ? 0.4 : 1.2);
     s.lastCombatT = ctx.time;
     ctx.events.emit('shot', { soldier: s, weapon: st.id, pos: _mz.clone(), dir: _aim.clone(), suppressed: st.suppressed, energy: st.energy });

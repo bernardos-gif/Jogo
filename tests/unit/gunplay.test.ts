@@ -7,6 +7,9 @@ import { defaultAttachments } from '../../src/art/weaponModels';
 import { Rng } from '../../src/core/rng';
 import { WEAPONS } from '../../src/config/content';
 import { TUNING } from '../../src/config/tuning';
+import { currentSpread } from '../../src/weapons/weaponSystem';
+import type { Soldier } from '../../src/player/soldier';
+import type { Arsenal, WeaponState } from '../../src/weapons/arsenal';
 
 describe('damage falloff', () => {
   it('is full damage before the range start and minimum after the range end', () => {
@@ -75,6 +78,26 @@ describe('ballistics', () => {
       expect(THREE.MathUtils.radToDeg(out.angleTo(dir))).toBeLessThanOrEqual(3.0001);
       expect(out.length()).toBeCloseTo(1, 6);
     }
+  });
+});
+
+describe('aim down sights', () => {
+  const stats = weaponStats('tern', defaultAttachments('tern'));
+  const soldier = { stance: 'stand', state: 'ground' } as unknown as Soldier;
+  const spread = (adsK: number, bloom: number, speed: number) =>
+    currentSpread(soldier, { adsK } as unknown as Arsenal, { stats, bloom } as unknown as WeaponState, speed);
+
+  it('is much tighter than the hip and than the weapon base ADS value', () => {
+    expect(spread(1, 0, 0)).toBeCloseTo(stats.ads * TUNING.weapons.adsSpreadMul, 6);
+    expect(spread(1, 0, 0)).toBeLessThan(spread(0, 0, 0) * 0.25);
+  });
+  it('keeps only a small share of the movement penalty', () => {
+    const walk = TUNING.movement.walkSpeed;
+    expect(spread(1, 0, walk) - spread(1, 0, 0)).toBeCloseTo(stats.move * TUNING.weapons.adsMoveKeep, 6);
+  });
+  it('caps bloom lower while aiming', () => {
+    expect(spread(1, stats.bloomMax, 0) - spread(1, 0, 0)).toBeCloseTo(stats.bloomMax * TUNING.weapons.adsBloomCapMul, 6);
+    expect(spread(0, stats.bloomMax, 0) - spread(0, 0, 0)).toBeCloseTo(stats.bloomMax, 6);
   });
 });
 

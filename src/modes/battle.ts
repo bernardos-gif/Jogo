@@ -123,6 +123,8 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
   forceAttachMenu = false;
   /** Automated runs show the scoreboard without input. */
   forceScoreboard = false;
+  /** Test hook: hold aim-down-sights (sight screenshots). */
+  forceAds = false;
 
   readonly destructibles: Destructibles;
   readonly water: Water | null = null;
@@ -697,6 +699,7 @@ export class Battle implements GameScene, WeaponContext, AIHost, GadgetContext, 
       input.takeMouse();
       this.controller.setAim(p.yaw, p.pitch);
     } else this.controller.frame(p, a.adsK, zoom, p.inVehicle && !this.personalWeaponSeat(p));
+    if (this.forceAds) p.input.aim = true;
     if (p.inVehicle && input.pressed('vehicleCamera')) this.vehicleThirdPerson = !this.vehicleThirdPerson;
     if (menu?.open || this.hud?.comms.open || this.hud?.tablet.open) {
       p.input.slot = -1;

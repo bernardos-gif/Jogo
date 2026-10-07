@@ -18,7 +18,7 @@ npm run dev        # Vite dev server + Electron window (the printed URL also wor
 npm run build      # typecheck, production build, universal .dmg in ./release
 ```
 
-`npm run build` writes `release/Vector-Front-1.0.1-universal.dmg`. It holds a single app that runs natively on Apple Silicon and Intel Macs.
+`npm run build` writes `release/Vector-Front-1.0.2-universal.dmg`. It holds a single app that runs natively on Apple Silicon and Intel Macs.
 
 ### Opening the app (it is not signed by Apple)
 

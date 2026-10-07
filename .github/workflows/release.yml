@@ -10,7 +10,7 @@ on:
       tag:
         description: Tag to publish (created on the selected commit if it does not exist)
         required: true
-        default: v1.0.1
+        default: v1.0.2
       replaces:
         description: Older release to delete once this one is published (optional, keeps its tag)
         required: false

@@ -21,6 +21,7 @@ import { MatchFlow } from './flow';
 import { damageSoldier } from '../weapons/damage';
 import { buildBreakwater } from '../world/maps/breakwater';
 import { WEAPON_BY_ID } from '../config/content';
+import type { AttachmentSet } from '../art/weaponModels';
 import { MainMenu, type MatchSetup } from '../ui/screens/mainMenu';
 import { SettingsScreen } from '../ui/screens/settings';
 import { ControlsScreen } from '../ui/screens/controls';
@@ -449,6 +450,15 @@ export class App {
       return b.vehicles.enter(p, v, 0);
     }
     if (name === 'exitVehicle') return p.inVehicle && b.vehicles.exit(p, b, true);
+    if (name.startsWith('ads:')) {
+      // Hold aim-down-sights with a sight (screenshots of the reticles).
+      const sight = name.slice(4) as AttachmentSet['sight'];
+      const w = p.arsenal.current;
+      if (!WEAPON_BY_ID[w.id].sights.includes(sight)) return false;
+      b.setAttachments({ ...w.att, sight });
+      b.forceAds = true;
+      return true;
+    }
     if (name === 'storm') return b.world.forceStorm();
     if (name === 'launch') return b.world.forceLaunch();
     if (name === 'blowFuel') {

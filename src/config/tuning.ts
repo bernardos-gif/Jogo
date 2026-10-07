@@ -154,6 +154,10 @@ export const TUNING = {
     recoilKickUp: 0.035,
     recoilStiffness: 160,
     recoilDamping: 14,
+    /** Share of sway, bob and recoil tilt kept at full ADS (the sight stays on the aim point). */
+    adsSwayKeep: 0.06,
+    adsBobKeep: 0.04,
+    adsTiltKeep: 0.25,
     equipTime: 0.45,
     inspectTime: 2.4,
     meleeTime: 0.55,
@@ -186,6 +190,12 @@ export const TUNING = {
     rocket: { accel: 160, maxSpeed: 125, splashDamage: 90, splashRadius: 4.5, vehicleDamage: 340, lockTime: 1.2, lockRange: 420, lockCone: 7, turnRate: 1.7, life: 6 },
     /** Spread multipliers by stance and state. */
     stanceSpread: { stand: 1, crouch: 0.8, prone: 0.6, air: 2.2, slide: 1.4 },
+    /** Aiming down sights: base spread scale, bloom gained per shot and its cap (fractions of the
+     *  weapon's values), and the share of the movement penalty that remains while aiming. */
+    adsSpreadMul: 0.55,
+    adsBloomMul: 0.4,
+    adsBloomCapMul: 0.35,
+    adsMoveKeep: 0.2,
     /** Fraction of damage kept after penetrating a thin surface. */
     penetrationKeep: 0.6,
     /** Recoil recovery: seconds after the last shot before the aim drifts back. */
@@ -955,6 +965,11 @@ export const TUNING = {
     minimapZoomedRadius: 60,
     /** Crewed enemy vehicles show on the minimap inside this range. */
     minimapVehicleRange: 180,
+    /** Aim-down-sights reticle for the red dot and the 2x prism (CSS px, before HUD scale); it
+     *  fades in from adsShowFrom to full ADS. */
+    adsDotPx: 3,
+    adsRingPx: 18,
+    adsShowFrom: 0.8,
     compassFov: 140,
     pings: { requestLife: 15, maxPerOwner: 2, maxRange: 600 },
     /** Damage in one hit that triggers the chromatic glitch. */

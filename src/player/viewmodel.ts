@@ -156,7 +156,7 @@ export class Viewmodel {
     if (!m) return;
 
     // Springs: sway from mouse, recoil.
-    const sw = V.swayAmount * (1 - st.adsK * 0.7);
+    const sw = V.swayAmount * (1 - st.adsK * (1 - V.adsSwayKeep));
     this.swayX = clamp(this.swayX - st.mouseDX * sw, -V.swayMax, V.swayMax);
     this.swayY = clamp(this.swayY + st.mouseDY * sw, -V.swayMax, V.swayMax);
     const ret = damp(V.swayReturn, dt);
@@ -178,7 +178,7 @@ export class Viewmodel {
     const moving = st.grounded && st.speed > 0.4 ? clamp(st.speed / 6, 0, 1.3) : 0;
     this.bobK += (moving - this.bobK) * damp(8, dt);
     this.bobT += dt * (4 + st.speed * 1.1);
-    const bobA = V.bobAmount * this.bobK * (1 - st.adsK * 0.85);
+    const bobA = V.bobAmount * this.bobK * (1 - st.adsK * (1 - V.adsBobKeep));
     const bx = Math.sin(this.bobT) * bobA;
     const by = -Math.abs(Math.cos(this.bobT)) * bobA;
 
@@ -247,7 +247,8 @@ export class Viewmodel {
     pos.y += by + this.swayY;
     pos.z += this.recoilZ;
     this.rig.position.copy(pos);
-    this.rig.rotation.set(rx + this.recoilP * 0.6 + this.swayY * 1.5, ry + this.swayX * 2, rz + this.recoilR + this.swayX * 1.2, 'YXZ');
+    const tilt = 1 - st.adsK * (1 - V.adsTiltKeep);
+    this.rig.rotation.set(rx + this.recoilP * 0.6 * tilt + this.swayY * 1.5, ry + this.swayX * 2, rz + this.recoilR * tilt + this.swayX * 1.2, 'YXZ');
     this.weaponRoot.rotation.set(0, 0, 0);
 
     // Arms follow the hands.

@@ -127,3 +127,8 @@ One line per choice. Newest entries are appended at the end of each section.
 - macOS packaging signs the app as one bundle (`codesign --deep`, ad-hoc) after clearing every extended attribute, and builds the DMG with `hdiutil`. electron-builder's own signing signed data files one by one, which leaves `com.apple.cs.*` attributes on them; Finder cannot copy those, and dragging 1.0.0 to Applications failed with error -36. The build now mounts its own DMG, copies the app out and verifies the copy before it counts as done.
 - Releases are built and published by `.github/workflows/release.yml` on a macOS runner (push a `v*` tag or run the workflow with a tag name).
 
+## Aim down sights (1.0.2)
+
+- Aiming down sights scales the weapon's ADS spread by 0.55, gains 0.4 of the normal bloom per shot with the bloom cap at 0.35, and keeps 0.2 of the movement penalty (all in `TUNING.weapons`). Hip fire is unchanged. Bots that aim down sights get the same accuracy; their aim model still sets how well they track.
+- At full ADS the viewmodel keeps 6 % of its sway, 4 % of its bob and 25 % of its recoil tilt, so the sight stays on the point where shots go.
+- The red dot and the 2x prism draw their reticle on the HUD at the exact screen center (3 px dot; the prism adds an 18 px ring). A 3D dot this close to the eye rendered about 20 px wide and moved with the sway. The prism housing is now open around a clear window, and the scope overlay no longer sways its reticle. The center dot of the 4x and 6x thermal scopes is about 3.5 px across (it was about 8 px).
